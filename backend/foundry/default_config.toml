@@ -1,0 +1,86 @@
+# Foundry Configuration
+# Edit this file to customize Foundry's behavior.
+# Environment variables (FOUNDRY_*) override these values.
+
+[server]
+host = "127.0.0.1"       # localhost-only by default
+port = 8120               # main app port
+# workers = 2             # uvicorn workers (production)
+
+[auth]
+method = "none"           # none | pin | token | accounts
+# pin = ""                # Set a PIN for remote access
+# session_timeout = "24h"
+
+[storage]
+data_dir = "~/.foundry"
+# workspace_root = "~/.foundry/workspaces"  # defaults to data_dir/workspaces
+
+[agent]
+default_provider = "ollama"
+default_model = ""        # auto-detected from provider
+# can_read = true
+# can_search = true
+# can_explain = true
+# can_propose = true
+# can_write = false       # Enable in Builder mode
+# can_execute = false     # Enable in Builder mode
+# can_network = false
+# can_git = false
+# can_install = false
+
+[agent.interaction]
+style = "collaborative"   # guided | collaborative | autonomous
+
+[agent.confirmations]
+on_delete = true
+on_git_push = true
+on_large_write = true
+on_first_execute = true
+# large_write_kb = 50
+
+[agent.providers.ollama]
+base_url = "http://localhost:11434"
+
+# [agent.providers.openai]
+# api_key = ""            # Or env: FOUNDRY_OPENAI_API_KEY
+
+# [agent.providers.anthropic]
+# api_key = ""            # Or env: FOUNDRY_ANTHROPIC_API_KEY
+
+# [agent.providers.openclaw]
+# gateway_url = "http://localhost:18789"
+
+[ingestion]
+max_concurrent = 3
+# cache_dir = "~/.foundry/cache"
+# cache_ttl_days = 30
+transcript_method = "auto"  # auto | yt-dlp | whisper
+
+[execution]
+workspace_scope = "project"   # project | all-projects | custom
+default_timeout = 600
+max_concurrent = 3
+show_output = true
+
+[workspace]
+auto_commit = true
+reconcile_mode = "detect"     # detect | interactive | auto
+
+# [github]
+# token = ""              # Or env: FOUNDRY_GITHUB_TOKEN
+
+[search]
+engine = "fts5"           # fts5 | hybrid (V1.5+)
+
+[ui]
+theme = "dark"
+default_layout = "three-panel"
+
+[backup]
+enabled = true
+interval_hours = 24
+keep_count = 7
+
+[logging]
+level = "INFO"            # DEBUG | INFO | WARNING | ERROR
