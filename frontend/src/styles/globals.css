@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  --background: 9 9 11;
+  --surface: 24 24 27;
+  --border: 39 39 42;
+  --text: 244 244 245;
+  --text-muted: 161 161 170;
+  --primary: 59 130 246;
+  --destructive: 239 68 68;
+  --success: 16 185 129;
+}
+
+body {
+  background-color: rgb(var(--background));
+  color: rgb(var(--text));
+}
