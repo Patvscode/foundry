@@ -12,14 +12,14 @@ export interface HealthResponse {
 }
 
 export interface Project {
-  id?: string
-  name?: string | null
-  description?: string | null
-  status?: string
-  workspace_path?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  [key: string]: unknown
+  id: string
+  name: string
+  description: string
+  status: string
+  workspace_path: string
+  subproject_count: number
+  created_at: string
+  updated_at: string
 }
 
 export type ConfigResponse = Record<string, unknown>
@@ -29,28 +29,25 @@ export interface VersionResponse {
   version: string
 }
 
-const API_BASE_URL = ''
+const API_BASE = ''
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Accept: 'application/json',
-    },
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    ...init,
   })
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+    throw new Error(`API ${response.status}: ${response.statusText}`)
   }
 
   return (await response.json()) as T
 }
 
+// ── System ─────────────────────────────────────────────────────
+
 export function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/api/system/health')
-}
-
-export function getProjects(): Promise<Project[]> {
-  return request<Project[]>('/api/projects')
 }
 
 export function getConfig(): Promise<ConfigResponse> {
@@ -59,4 +56,21 @@ export function getConfig(): Promise<ConfigResponse> {
 
 export function getVersion(): Promise<VersionResponse> {
   return request<VersionResponse>('/api/system/version')
+}
+
+// ── Projects ───────────────────────────────────────────────────
+
+export function getProjects(): Promise<Project[]> {
+  return request<Project[]>('/api/projects')
+}
+
+export function getProject(id: string): Promise<Project> {
+  return request<Project>(`/api/projects/${id}`)
+}
+
+export function createProject(name: string, description = ''): Promise<Project> {
+  return request<Project>('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name, description }),
+  })
 }

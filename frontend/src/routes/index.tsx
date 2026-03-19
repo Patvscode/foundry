@@ -1,49 +1,105 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 
-import { getHealth } from '@/api/client'
+import { createProject, getHealth, getProjects } from '@/api/client'
 import { StatusBadge } from '@/components/common/StatusBadge'
 
 export function DashboardRoute() {
-  const { data, error, isPending } = useQuery({
-    queryKey: ['health'],
-    queryFn: getHealth,
-    retry: 1,
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [newName, setNewName] = useState('')
+
+  const health = useQuery({ queryKey: ['health'], queryFn: getHealth, retry: 1 })
+  const projects = useQuery({ queryKey: ['projects'], queryFn: getProjects })
+
+  const create = useMutation({
+    mutationFn: (name: string) => createProject(name),
+    onSuccess: async (project) => {
+      await queryClient.invalidateQueries({ queryKey: ['projects'] })
+      await navigate({ to: '/project/$id', params: { id: project.id } })
+    },
   })
+
+  const handleCreate = () => {
+    const name = newName.trim() || 'Untitled Project'
+    setNewName('')
+    create.mutate(name)
+  }
+
+  const hasProjects = (projects.data?.length ?? 0) > 0
 
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-4">
+      {/* System status */}
       <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
         <h2 className="text-sm font-medium text-zinc-300">System Status</h2>
         <div className="mt-3">
-          {isPending ? (
-            <span className="text-sm text-zinc-400">Checking backend health...</span>
-          ) : error ? (
+          {health.isPending ? (
+            <span className="text-sm text-zinc-400">Checking backend health…</span>
+          ) : health.error ? (
             <div className="space-y-2">
               <StatusBadge status="error" label="Backend unreachable" />
-              <p className="text-sm text-zinc-400">Could not connect to `/api/system/health`.</p>
+              <p className="text-sm text-zinc-400">Could not connect to /api/system/health.</p>
             </div>
-          ) : data ? (
+          ) : health.data ? (
             <div className="space-y-2">
-              <StatusBadge status={data.status === 'healthy' ? 'healthy' : 'degraded'} label={data.status} />
-              <p className="text-sm text-zinc-400">Version {data.version} • DB {data.db} • Workspace {data.workspace}</p>
+              <StatusBadge status={health.data.status === 'healthy' ? 'healthy' : 'degraded'} label={health.data.status} />
+              <p className="text-sm text-zinc-400">
+                Version {health.data.version} · DB {health.data.db} · Workspace {health.data.workspace}
+              </p>
             </div>
           ) : null}
         </div>
       </section>
 
-      <section className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-900 p-8">
-        <div className="max-w-lg space-y-3 text-center">
-          <h1 className="text-2xl font-semibold text-zinc-100">🔥 No projects yet</h1>
-          <p className="text-zinc-400">Paste a YouTube URL, drop a PDF, or link a repo.</p>
-          <p className="text-zinc-400">Foundry will find the projects hiding inside.</p>
-          <button
-            type="button"
-            className="mt-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-          >
-            New Project
-          </button>
-        </div>
+      {/* Quick create */}
+      <section className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <input
+          type="text"
+          placeholder="Project name…"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          className="h-9 flex-1 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+        />
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={create.isPending}
+          className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-400 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+        >
+          {create.isPending ? 'Creating…' : 'New Project'}
+        </button>
       </section>
+
+      {/* Project list or empty state */}
+      {hasProjects ? (
+        <section className="space-y-2">
+          {projects.data?.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => navigate({ to: '/project/$id', params: { id: p.id } })}
+              className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800"
+            >
+              <div>
+                <div className="text-sm font-medium text-zinc-100">{p.name}</div>
+                {p.description && <div className="mt-1 text-xs text-zinc-400">{p.description}</div>}
+              </div>
+              <div className="text-xs text-zinc-500">{p.subproject_count} subprojects</div>
+            </button>
+          ))}
+        </section>
+      ) : !projects.isPending ? (
+        <section className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-900 p-8">
+          <div className="max-w-lg space-y-3 text-center">
+            <h1 className="text-2xl font-semibold text-zinc-100">🔥 No projects yet</h1>
+            <p className="text-zinc-400">Paste a YouTube URL, drop a PDF, or link a repo.</p>
+            <p className="text-zinc-400">Foundry will find the projects hiding inside.</p>
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }
