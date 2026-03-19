@@ -14,7 +14,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _new_id() -> str:
+def new_id() -> str:
+    """Generate a new UUID. Public so callers can pre-generate IDs."""
     return str(uuid.uuid4())
 
 
@@ -23,13 +24,13 @@ def _new_id() -> str:
 
 async def insert_project(
     db: Database,
+    project_id: str,
     name: str,
+    workspace_path: str,
     description: str = "",
-    workspace_path: str = "",
     settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Insert a new project. Returns the full project dict including generated ID."""
-    project_id = _new_id()
+    """Insert a new project with all final values. No partial inserts."""
     now = _now()
     await db.execute(
         """

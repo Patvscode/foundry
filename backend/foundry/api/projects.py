@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from foundry.storage.database import Database
-from foundry.storage.queries import get_project, insert_project, list_projects
+from foundry.storage.queries import get_project, insert_project, list_projects, new_id
 from foundry.workspace.manager import create_project_workspace
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -36,28 +36,24 @@ async def create(body: CreateProjectRequest, request: Request) -> dict[str, Any]
     db: Database = request.app.state.db
     settings = request.app.state.settings
 
-    # Insert first to get the real project ID
-    project = await insert_project(
-        db,
-        name=body.name,
-        description=body.description,
-    )
+    # 1. Generate ID upfront
+    project_id = new_id()
 
-    # Create workspace using the real project ID
+    # 2. Create workspace on disk using the real ID
     workspace_path = create_project_workspace(
-        project_id=project["id"],
+        project_id=project_id,
         name=body.name,
         data_dir=settings.storage.data_dir,
     )
 
-    # Update the workspace path in DB
-    now_str = project["updated_at"]  # Same timestamp is fine for atomic create
-    await db.execute(
-        "UPDATE projects SET workspace_path = ?, updated_at = ? WHERE id = ?",
-        (str(workspace_path), now_str, project["id"]),
+    # 3. Single insert with all final values
+    project = await insert_project(
+        db,
+        project_id=project_id,
+        name=body.name,
+        description=body.description,
+        workspace_path=str(workspace_path),
     )
-    await db.commit()
-    project["workspace_path"] = str(workspace_path)
 
     return project
 
