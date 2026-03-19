@@ -74,3 +74,59 @@ export function createProject(name: string, description = ''): Promise<Project> 
     body: JSON.stringify({ name, description }),
   })
 }
+
+// ── Resources ──────────────────────────────────────────────────
+
+export interface Resource {
+  id: string
+  project_id: string
+  type: string
+  url: string
+  title: string | null
+  pipeline_status: string
+  pipeline_error: string | null
+  content_hash: string | null
+  created_at: string
+  updated_at: string
+  extraction?: ExtractionResult | null
+}
+
+export interface ExtractionResult {
+  id: string
+  resource_id: string
+  summary: string | null
+  key_concepts: string[] | null
+  entities: Record<string, unknown[]> | null
+  content_sections: Array<{ title: string; summary: string }> | null
+  discovered_projects: SubprojectProposal[] | null
+  open_questions: string[] | null
+  model_used: string | null
+}
+
+export interface SubprojectProposal {
+  suggested_name: string
+  description: string
+  type: string
+  repos: string[]
+  dependencies: string[]
+  setup_steps: string[]
+  complexity: string
+  confidence: number
+  source_context: string
+  is_synthetic: boolean
+}
+
+export function getResources(projectId: string): Promise<Resource[]> {
+  return request<Resource[]>(`/api/projects/${projectId}/resources`)
+}
+
+export function getResource(resourceId: string): Promise<Resource> {
+  return request<Resource>(`/api/resources/${resourceId}`)
+}
+
+export function addResource(projectId: string, url: string): Promise<Resource> {
+  return request<Resource>(`/api/projects/${projectId}/resources`, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
+}

@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from foundry.api.router import router as api_router
 from foundry.config import FoundrySettings, get_settings
+from foundry.jobs.runner import JobRunner
 from foundry.logging_setup import configure_logging
 from foundry.storage.database import init_database
 
@@ -24,8 +25,13 @@ async def lifespan(app: FastAPI):
     db_path = Path(settings.storage.data_dir) / "foundry.db"
     db = await init_database(db_path)
 
+    # Start job runner
+    runner = JobRunner(db, settings)
+    await runner.start()
+
     app.state.settings = settings
     app.state.db = db
+    app.state.runner = runner
     app.state.started_at = time.monotonic()
 
     logger.info(
@@ -41,6 +47,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         logger.info("Foundry shutting down")
+        await runner.stop()
         await db.close()
 
 
