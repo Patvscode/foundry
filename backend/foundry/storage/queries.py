@@ -28,6 +28,7 @@ async def insert_project(
     workspace_path: str = "",
     settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Insert a new project. Returns the full project dict including generated ID."""
     project_id = _new_id()
     now = _now()
     await db.execute(
@@ -51,6 +52,7 @@ async def insert_project(
 
 
 async def list_projects(db: Database) -> list[dict[str, Any]]:
+    """List all non-deleted projects, most recent first, with subproject counts."""
     rows = await db.fetchall(
         """
         SELECT p.*, COUNT(s.id) AS subproject_count
@@ -74,6 +76,7 @@ async def list_projects(db: Database) -> list[dict[str, Any]]:
 
 
 async def get_project(db: Database, project_id: str) -> dict[str, Any] | None:
+    """Fetch a single non-deleted project by ID, with subproject count."""
     row = await db.fetchone(
         """
         SELECT p.*, COUNT(s.id) AS subproject_count
@@ -93,19 +96,3 @@ async def get_project(db: Database, project_id: str) -> dict[str, Any] | None:
         except (json.JSONDecodeError, TypeError):
             pass
     return d
-
-
-async def update_project(
-    db: Database, project_id: str, **fields: Any
-) -> bool:
-    if not fields:
-        return False
-    fields["updated_at"] = _now()
-    set_clause = ", ".join(f"{k} = ?" for k in fields)
-    values = list(fields.values()) + [project_id]
-    cursor = await db.execute(
-        f"UPDATE projects SET {set_clause} WHERE id = ?",
-        tuple(values),
-    )
-    await db.commit()
-    return cursor.rowcount > 0

@@ -5,10 +5,13 @@ import { useState } from 'react'
 import { createProject, getHealth, getProjects } from '@/api/client'
 import { StatusBadge } from '@/components/common/StatusBadge'
 
+const MAX_NAME_LENGTH = 200
+
 export function DashboardRoute() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [newName, setNewName] = useState('')
+  const [nameError, setNameError] = useState('')
 
   const health = useQuery({ queryKey: ['health'], queryFn: getHealth, retry: 1 })
   const projects = useQuery({ queryKey: ['projects'], queryFn: getProjects })
@@ -19,12 +22,30 @@ export function DashboardRoute() {
       await queryClient.invalidateQueries({ queryKey: ['projects'] })
       await navigate({ to: '/project/$id', params: { id: project.id } })
     },
+    onError: () => {
+      setNameError('Failed to create project. Try again.')
+    },
   })
 
-  const handleCreate = () => {
-    const name = newName.trim() || 'Untitled Project'
+  const validateAndCreate = () => {
+    const trimmed = newName.trim()
+    if (!trimmed) {
+      setNameError('Project name is required')
+      return
+    }
+    if (trimmed.length > MAX_NAME_LENGTH) {
+      setNameError(`Name must be ${MAX_NAME_LENGTH} characters or less`)
+      return
+    }
+    setNameError('')
     setNewName('')
-    create.mutate(name)
+    create.mutate(trimmed)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      validateAndCreate()
+    }
   }
 
   const hasProjects = (projects.data?.length ?? 0) > 0
@@ -44,7 +65,10 @@ export function DashboardRoute() {
             </div>
           ) : health.data ? (
             <div className="space-y-2">
-              <StatusBadge status={health.data.status === 'healthy' ? 'healthy' : 'degraded'} label={health.data.status} />
+              <StatusBadge
+                status={health.data.status === 'healthy' ? 'healthy' : 'degraded'}
+                label={health.data.status}
+              />
               <p className="text-sm text-zinc-400">
                 Version {health.data.version} · DB {health.data.db} · Workspace {health.data.workspace}
               </p>
@@ -53,24 +77,33 @@ export function DashboardRoute() {
         </div>
       </section>
 
-      {/* Quick create */}
-      <section className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <input
-          type="text"
-          placeholder="Project name…"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-          className="h-9 flex-1 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-        />
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={create.isPending}
-          className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-400 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-        >
-          {create.isPending ? 'Creating…' : 'New Project'}
-        </button>
+      {/* Create project */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="New project name…"
+            value={newName}
+            onChange={(e) => {
+              setNewName(e.target.value)
+              if (nameError) setNameError('')
+            }}
+            onKeyDown={handleKeyDown}
+            maxLength={MAX_NAME_LENGTH + 1}
+            className={`h-9 flex-1 rounded-md border bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${
+              nameError ? 'border-red-500' : 'border-zinc-800'
+            }`}
+          />
+          <button
+            type="button"
+            onClick={validateAndCreate}
+            disabled={create.isPending}
+            className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-400 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+          >
+            {create.isPending ? 'Creating…' : 'New Project'}
+          </button>
+        </div>
+        {nameError && <p className="mt-2 text-xs text-red-400">{nameError}</p>}
       </section>
 
       {/* Project list or empty state */}
@@ -95,8 +128,7 @@ export function DashboardRoute() {
         <section className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-900 p-8">
           <div className="max-w-lg space-y-3 text-center">
             <h1 className="text-2xl font-semibold text-zinc-100">🔥 No projects yet</h1>
-            <p className="text-zinc-400">Paste a YouTube URL, drop a PDF, or link a repo.</p>
-            <p className="text-zinc-400">Foundry will find the projects hiding inside.</p>
+            <p className="text-zinc-400">Type a project name above and click New Project to get started.</p>
           </div>
         </section>
       ) : null}
