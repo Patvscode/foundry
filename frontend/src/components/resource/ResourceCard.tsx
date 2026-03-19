@@ -8,6 +8,7 @@ interface ResourceCardProps {
     url: string
     title: string | null
     type: string
+    status: string
     pipeline_status: string
   }
   selected: boolean
@@ -15,8 +16,7 @@ interface ResourceCardProps {
 }
 
 export function ResourceCard({ resource, selected, onClick }: ResourceCardProps) {
-  const isActive = !resource.pipeline_status.includes('failed') &&
-    resource.pipeline_status !== 'discovered'
+  const isActive = resource.status === 'pending' || resource.status === 'processing'
 
   return (
     <button

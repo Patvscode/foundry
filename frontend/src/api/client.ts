@@ -83,6 +83,7 @@ export interface Resource {
   type: string
   url: string
   title: string | null
+  status: 'pending' | 'processing' | 'completed' | 'failed'
   pipeline_status: string
   pipeline_error: string | null
   content_hash: string | null

@@ -102,6 +102,17 @@ async def get_project(db: Database, project_id: str) -> dict[str, Any] | None:
 # ── Resources ─────────────────────────────────────────────────────────────
 
 
+def _coarse_status(pipeline_status: str) -> str:
+    """Derive coarse lifecycle status from detailed pipeline_status."""
+    if pipeline_status == "pending":
+        return "pending"
+    if pipeline_status.endswith("_failed"):
+        return "failed"
+    if pipeline_status == "discovered":
+        return "completed"
+    return "processing"
+
+
 async def insert_resource(
     db: Database,
     resource_id: str,
@@ -114,8 +125,8 @@ async def insert_resource(
     now = _now()
     await db.execute(
         """
-        INSERT INTO resources (id, project_id, type, url, title, pipeline_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        INSERT INTO resources (id, project_id, type, url, title, status, pipeline_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', 'pending', ?, ?)
         """,
         (resource_id, project_id, resource_type, url, title, now, now),
     )
@@ -126,6 +137,7 @@ async def insert_resource(
         "type": resource_type,
         "url": url,
         "title": title or url,
+        "status": "pending",
         "pipeline_status": "pending",
         "pipeline_error": None,
         "created_at": now,
@@ -153,15 +165,16 @@ async def get_resource(db: Database, resource_id: str) -> dict[str, Any] | None:
 async def update_resource_status(
     db: Database,
     resource_id: str,
-    status: str,
+    pipeline_status: str,
     error: str | None = None,
     content_hash: str | None = None,
     raw_content_path: str | None = None,
     title: str | None = None,
 ) -> None:
-    """Update resource pipeline status and optional fields."""
+    """Update resource pipeline_status and derive coarse status automatically."""
     fields: dict[str, Any] = {
-        "pipeline_status": status,
+        "pipeline_status": pipeline_status,
+        "status": _coarse_status(pipeline_status),
         "pipeline_error": error,
         "updated_at": _now(),
     }

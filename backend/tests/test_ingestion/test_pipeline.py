@@ -28,6 +28,7 @@ def test_add_resource_to_project(temp_data_dir: Path) -> None:
     data = resp.json()
     assert data["project_id"] == project_id
     assert data["url"] == "https://example.com/article"
+    assert data["status"] == "pending"
     assert data["pipeline_status"] == "pending"
 
 
@@ -123,6 +124,7 @@ async def test_pipeline_runs_with_fallback_provider(temp_data_dir: Path) -> None
     # Check final state
     resource = await get_resource(db, resource_id)
     assert resource is not None
+    assert resource["status"] == "completed"
     assert resource["pipeline_status"] == "discovered"
     assert resource["pipeline_error"] is None
     assert resource["content_hash"] == "abc123"

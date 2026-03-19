@@ -9,9 +9,8 @@ interface ProjectWorkspaceRouteProps {
   id: string
 }
 
-const ACTIVE_STATUSES = new Set([
-  'pending', 'extracting', 'extracted', 'analyzing', 'analyzed', 'discovering',
-])
+// Coarse statuses that indicate active processing
+const ACTIVE_COARSE = new Set(['pending', 'processing'])
 
 export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
   const queryClient = useQueryClient()
@@ -31,7 +30,7 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
     queryFn: () => getResources(id),
     refetchInterval: (query) => {
       const data = query.state.data
-      if (data?.some((r: Resource) => ACTIVE_STATUSES.has(r.pipeline_status))) {
+      if (data?.some((r: Resource) => ACTIVE_COARSE.has(r.status))) {
         return 3000
       }
       return false
@@ -45,7 +44,7 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
     enabled: !!selectedResourceId,
     refetchInterval: (query) => {
       const data = query.state.data
-      if (data && ACTIVE_STATUSES.has(data.pipeline_status)) {
+      if (data && ACTIVE_COARSE.has(data.status)) {
         return 3000
       }
       return false
