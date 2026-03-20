@@ -5,8 +5,7 @@ dev-setup: backend-setup frontend-setup
 	@echo "✅ Dev environment ready. Run 'make dev' to start."
 
 dev:
-	@echo "Starting Foundry dev environment..."
-	@$(MAKE) -j2 dev-backend dev-frontend
+	@bash scripts/dev.sh
 
 dev-backend:
 	cd backend && .venv/bin/uvicorn foundry.main:app --host 127.0.0.1 --port 8121 --reload

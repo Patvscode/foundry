@@ -63,6 +63,10 @@ default_timeout = 600
 max_concurrent = 3
 show_output = true
 
+[jobs]
+disabled = false              # Set true to disable the background job runner
+poll_interval = 2.0           # Seconds between job queue checks
+
 [workspace]
 auto_commit = true
 reconcile_mode = "detect"     # detect | interactive | auto
