@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Folder, LayoutDashboard, Plus, Settings } from 'lucide-react'
+import { Folder, LayoutDashboard, Plus, Search, Settings } from 'lucide-react'
 
 import { getProjects } from '@/api/client'
 import { useAppStore } from '@/stores/app'
@@ -10,7 +10,7 @@ const navLinkClass =
 
 const navLinkActiveClass = `${navLinkClass} bg-zinc-800 text-zinc-100`
 
-export function Sidebar() {
+export function Sidebar({ onOpenPalette }: { onOpenPalette?: () => void }) {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
 
@@ -55,6 +55,17 @@ export function Sidebar() {
               Settings
             </Link>
           </nav>
+
+          {/* Search */}
+          <button
+            type="button"
+            onClick={onOpenPalette}
+            className={navLinkClass}
+          >
+            <Search size={16} />
+            Search
+            <kbd className="ml-auto rounded border border-zinc-700 bg-zinc-800 px-1 text-[10px] text-zinc-500">⌘K</kbd>
+          </button>
 
           {/* New Project */}
           <Link

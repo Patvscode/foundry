@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import { createProject, getHealth, getProjects } from '@/api/client'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import { ProviderStatus } from '@/components/common/ProviderStatus'
 
 const MAX_NAME_LENGTH = 200
 
@@ -75,6 +76,11 @@ export function DashboardRoute() {
             </div>
           ) : null}
         </div>
+      </section>
+
+      {/* Provider status */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <ProviderStatus compact />
       </section>
 
       {/* Create project */}

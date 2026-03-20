@@ -22,6 +22,15 @@ def new_id() -> str:
 # ── Projects ──────────────────────────────────────────────────────────────
 
 
+async def _index_safe(db: Database, entity_type: str, entity_id: str, title: str, body: str = "", parent_id: str = "") -> None:
+    """Index entity for search. Fails silently if FTS table doesn't exist yet."""
+    try:
+        from foundry.search.engine import index_entity
+        await index_entity(db, entity_type, entity_id, title, body, parent_id)
+    except Exception:
+        pass  # Non-fatal — search index may not exist during early migrations/tests
+
+
 async def insert_project(
     db: Database,
     project_id: str,
@@ -40,6 +49,7 @@ async def insert_project(
         (project_id, name, description, workspace_path, json.dumps(settings or {}), now, now),
     )
     await db.commit()
+    await _index_safe(db, "project", project_id, name, description)
     return {
         "id": project_id,
         "name": name,

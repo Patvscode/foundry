@@ -163,5 +163,92 @@ def config_show() -> None:
     click.echo(json.dumps(payload, indent=2, sort_keys=True))
 
 
+@main.command()
+def setup() -> None:
+    """Interactive setup: create config, directories, check dependencies."""
+    from foundry.setup import run_setup
+    run_setup()
+
+
+@main.command()
+def doctor() -> None:
+    """Validate Foundry installation and configuration."""
+    from foundry.setup import run_doctor
+    run_doctor()
+
+
+@main.command()
+def providers() -> None:
+    """Show available LLM providers and their status."""
+    import asyncio
+    asyncio.run(_show_providers())
+
+
+async def _show_providers() -> None:
+    settings = get_settings()
+    base_url = f"http://{settings.server.host}:{settings.server.port}"
+
+    # Try the running server first
+    try:
+        response = httpx.get(f"{base_url}/api/system/providers", timeout=3.0)
+        if response.status_code < 400:
+            data = response.json()
+            click.echo(f"Mode: {data.get('mode', 'unknown')}")
+            click.echo(f"Active provider: {data.get('active_provider', 'none')}")
+            click.echo(f"Active model: {data.get('active_model', 'none')}")
+            click.echo(f"Recommended: {data.get('recommended', 'fallback')}")
+            click.echo()
+            for p in data.get("providers", []):
+                status_icon = "✅" if p["status"] in ("connected", "always_available", "configured") else "❌"
+                click.echo(f"  {status_icon} {p['name']} ({p['id']}): {p['status']}")
+                if p.get("models"):
+                    for m in p["models"][:5]:
+                        name = m["name"] if isinstance(m, dict) else m
+                        click.echo(f"      model: {name}")
+            click.echo()
+            click.echo(data.get("setup_hint", ""))
+            return
+    except Exception:
+        pass
+
+    # Offline fallback: probe directly
+    click.echo("(Server not running — probing providers directly)")
+    click.echo()
+
+    # Ollama
+    try:
+        resp = httpx.get(f"{settings.agent.providers.ollama.base_url}/api/tags", timeout=3.0)
+        if resp.status_code < 400:
+            models = resp.json().get("models", [])
+            click.echo(f"  ✅ Ollama: {len(models)} models available")
+            for m in models[:5]:
+                click.echo(f"      {m['name']}")
+        else:
+            click.echo("  ❌ Ollama: reachable but returned error")
+    except Exception:
+        click.echo("  ❌ Ollama: not reachable")
+
+    # llama.cpp
+    try:
+        resp = httpx.get("http://localhost:18080/v1/models", timeout=3.0)
+        if resp.status_code < 400:
+            click.echo("  ✅ llama.cpp: connected")
+        else:
+            click.echo("  ❌ llama.cpp: not reachable")
+    except Exception:
+        click.echo("  ❌ llama.cpp: not reachable")
+
+    # API keys
+    if settings.agent.providers.openai.api_key:
+        click.echo("  ✅ OpenAI: API key configured")
+    else:
+        click.echo("  ❌ OpenAI: no API key")
+
+    if settings.agent.providers.anthropic.api_key:
+        click.echo("  ✅ Anthropic: API key configured")
+    else:
+        click.echo("  ❌ Anthropic: no API key")
+
+
 if __name__ == "__main__":
     main()

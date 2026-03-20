@@ -95,9 +95,11 @@ class IngestionSettings(BaseModel):
 
 class ExecutionSettings(BaseModel):
     workspace_scope: str = "project"
-    default_timeout: int = 600
+    default_timeout: int = 60
+    max_timeout: int = 300
     max_concurrent: int = 3
     show_output: bool = True
+    max_output_bytes: int = 512_000
 
 
 class JobsSettings(BaseModel):

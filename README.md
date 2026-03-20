@@ -1,124 +1,194 @@
 # Foundry
 
-**Research-to-Projects Workspace**
-
-Feed Foundry a URL, paper, or article. It extracts the distinct buildable projects described inside, lets you review and accept them, and organizes each into a real workspace with tasks, notes, and provenance tracking.
-
-> Open by default. Reliable by choice. Dangerous only by consent.
+Research-to-projects workspace. Feed it URLs, papers, repos, and videos → extracts buildable projects → organizes into workspaces with tasks, notes, provenance, and agent assist.
 
 ## What It Does
 
-1. **Create a project** — name it and start adding resources
-2. **Add a resource** — paste a URL (web article, docs page, blog post)
-3. **Automatic analysis** — Foundry extracts text, analyzes it with an LLM, and discovers distinct sub-projects
-4. **Review proposals** — accept, reject, or edit discovered projects before they're created
-5. **Workspace per subproject** — each accepted project gets a directory, README, tasks, and notes
-6. **Track provenance** — every subproject links back to the source that inspired it
+- **Ingest** resources: webpages, PDFs, YouTube videos
+- **Analyze** content using local LLMs (Ollama, llama.cpp) or API providers
+- **Discover** buildable projects, components, and systems from research
+- **Organize** into subproject workspaces with tasks, notes, and provenance
+- **Execute** bounded shell commands in workspace context (install, test, build)
+- **Search** across everything with full-text search (Cmd+K)
+- **Chat** with a context-aware agent about projects and resources
 
 ## Quick Start
 
-### Prerequisites
-
-- **Python 3.11+**
-- **Node.js 18+**
-- **git**
-
-### Setup
-
 ```bash
+# Clone
 git clone https://github.com/Patvscode/foundry.git
 cd foundry
 
-# Install backend + frontend dependencies
-make dev-setup
+# Backend
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 
-# Start both servers (backend :8121 + frontend :5173)
-make dev
+# Frontend
+cd ../frontend
+npm install
+npm run build
+
+# Setup (creates config, checks deps)
+cd ../backend
+python -m foundry.cli setup
+
+# Start
+python -m foundry.cli start --foreground
+# Or: ./dev.sh for development mode with hot reload
+
+# Open: http://localhost:8120
 ```
-
-Open **http://localhost:5173** in your browser.
-
-### Production Mode
-
-```bash
-make build    # Build frontend, install backend
-cd backend && .venv/bin/uvicorn foundry.main:app --host 127.0.0.1 --port 8120
-```
-
-Open **http://localhost:8120** (backend serves the built frontend).
-
-## LLM Provider
-
-Foundry uses an LLM for resource analysis and project discovery. Two modes:
-
-### With Ollama (recommended)
-
-Install [Ollama](https://ollama.com) and pull a model:
-
-```bash
-ollama pull qwen3:14b   # or any model you prefer
-```
-
-Foundry auto-detects Ollama at `http://localhost:11434`. Configure in `~/.foundry/config.toml`:
-
-```toml
-[agent]
-default_provider = "ollama"
-default_model = "qwen3:14b"
-```
-
-### Without Ollama (fallback mode)
-
-If no LLM is available, Foundry uses a **placeholder provider** that:
-- Extracts and caches the webpage content normally
-- Returns synthetic analysis results (clearly labeled with ⚠ warnings)
-- Generates a single "Review this resource" proposal
-
-This lets you explore the full UI and workflow without any LLM setup.
 
 ## Configuration
 
-Config lives at `~/.foundry/config.toml` (created on first run). Key settings:
+Config file: `~/.foundry/config.toml` (created by `foundry setup`)
 
+### Local Model Setup
+
+Foundry works best with a local LLM. Options:
+
+**Ollama (recommended for most setups):**
+```bash
+ollama serve                    # Start Ollama
+ollama pull qwen3.5:4b          # Pull a model
+```
+Then in `~/.foundry/config.toml`:
 ```toml
-[server]
-host = "127.0.0.1"       # localhost-only by default
-port = 8120
-
 [agent]
-default_provider = "ollama"    # ollama | none
-default_model = ""             # auto-detected if empty
-
-[jobs]
-disabled = false               # true to disable background job processing
+default_provider = "ollama"
+default_model = "qwen3.5:4b"
 ```
 
-See `backend/foundry/default_config.toml` for all available options.
+**llama.cpp (for larger models):**
+If you have a llama.cpp server running on port 18080, Foundry detects it automatically.
 
-## Data
+**API providers:**
+```toml
+[agent]
+default_provider = "openai"
 
-All data lives in `~/.foundry/`:
-- `foundry.db` — SQLite database (metadata, state, relationships)
-- `workspaces/` — project and subproject directories
-- `cache/` — cached extracted content
-- `logs/` — application logs
+[agent.providers.openai]
+api_key = "sk-..."
+```
+
+**Fallback mode (no model needed):**
+```toml
+[agent]
+default_provider = "none"
+```
+Uses synthetic placeholders — you can still create projects, add resources, and organize manually.
+
+### Check Provider Status
+
+```bash
+python -m foundry.cli providers   # Show available providers
+python -m foundry.cli doctor      # Full system check
+```
+
+Or in the UI: Settings → LLM Providers
+
+## Shell / Build / Test / Install
+
+Foundry supports bounded execution inside subproject workspaces:
+
+| Action | What it does |
+|--------|-------------|
+| `install` | Runs ecosystem-appropriate install (pip/npm/cargo) |
+| `test` | Runs ecosystem-appropriate tests (pytest/npm test) |
+| `build` | Runs ecosystem-appropriate build |
+| `shell` | Custom command (user-specified) |
+
+**Safety boundaries:**
+- Execution is **disabled by default** — set `agent.can_execute = true` in config
+- Commands run **only inside subproject workspace directories**
+- All executions are **logged** with full stdout/stderr
+- **Timeout enforced** (default 60s, max 300s)
+- No background/daemon processes
+- No access outside the workspace directory
+
+Enable in config:
+```toml
+[agent]
+can_execute = true
+```
+
+## Search
+
+- **Cmd+K** (or Ctrl+K) opens the command palette
+- Searches across: projects, resources, subprojects, tasks, notes
+- Quick actions: navigate, create project
+
+## Architecture
+
+```
+foundry/
+├── backend/          # FastAPI + Python 3.11+
+│   └── foundry/
+│       ├── api/      # REST endpoints
+│       ├── ingestion/# Pipeline, handlers (webpage/PDF/YouTube), coordinator
+│       ├── execution/# Workspace-scoped shell execution
+│       ├── search/   # FTS5 search engine
+│       ├── agents/   # LLM provider abstraction
+│       ├── storage/  # SQLite + migrations
+│       └── workspace/# Filesystem management
+└── frontend/         # React 19 + Vite + TypeScript + Tailwind
+```
+
+## Ingestion Pipeline
+
+Resources go through: **extract → analyze → discover**
+
+- **Webpage:** trafilatura text extraction
+- **PDF:** pypdfium2 text extraction (local + remote)
+- **YouTube:** yt-dlp metadata + VTT transcript
+
+Optional **coordinated mode** (bounded multi-worker, disabled by default):
+```bash
+FOUNDRY_INGESTION_COORDINATED=1 python -m foundry.cli start --foreground
+```
+
+Single-model sequential path always works as fallback.
+
+## Startup / Shutdown
+
+```bash
+# Start (foreground)
+python -m foundry.cli start --foreground
+
+# Start (background)
+python -m foundry.cli start
+
+# Stop
+python -m foundry.cli stop
+
+# Status
+python -m foundry.cli status
+
+# Health check
+python -m foundry.cli health
+```
+
+**Access:** By default binds to `127.0.0.1:8120` (local only).
+To expose on your network (e.g., Tailscale): set `server.host = "0.0.0.0"` in config.
 
 ## Running Tests
 
 ```bash
 cd backend
-.venv/bin/pytest -v
+source .venv/bin/activate
+python -m pytest tests/ -v
 ```
 
-## Tech Stack
+## Limitations
 
-- **Backend:** Python / FastAPI / SQLite (WAL) / aiosqlite
-- **Frontend:** React 19 / TypeScript / Vite / Tailwind CSS / TanStack Router+Query / Zustand
-- **LLM:** Provider-abstracted (Ollama, with fallback)
-
-## Status
-
-🚧 MVP — core product loop works. Not yet ready for general use.
+- **Image-only PDFs** are not supported (no OCR yet)
+- **YouTube private/restricted videos** may fail
+- **Search index** rebuilds on startup — not incrementally updated for all entity types yet
+- **Execution** is intentionally restricted to workspace directories
+- **No authentication** — designed for local/trusted-network use
+- **No mobile layout** yet
 
 ## License
 

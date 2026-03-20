@@ -74,6 +74,8 @@ async def health(request: Request) -> dict[str, Any]:
     now = time.monotonic()
     started = request.app.state.started_at
 
+    agent_provider = await _check_agent_provider(settings)
+
     response = {
         "status": "healthy" if db_status == "ok" and workspace_status == "ok" else "degraded",
         "version": _get_version(),
@@ -81,7 +83,9 @@ async def health(request: Request) -> dict[str, Any]:
         "db": db_status,
         "workspace": workspace_status,
         "disk_free_gb": round(disk_free, 2),
-        "agent_provider": await _check_agent_provider(settings),
+        "agent_provider": agent_provider,
+        "agent_model": settings.agent.default_model or "(auto-detect)",
+        "execution_enabled": settings.agent.can_execute,
         "active_projects": await _count_active_projects(db),
         "active_ingestions": await _count_active_ingestions(db),
         "pending_reconcile_issues": 0,

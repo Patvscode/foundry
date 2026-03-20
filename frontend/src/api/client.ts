@@ -372,3 +372,103 @@ export function getSubprojectFiles(id: string): Promise<FileTreeResponse> {
 export function getFileContent(subprojectId: string, path: string): Promise<FileContentResponse> {
   return request<FileContentResponse>(`/api/subprojects/${subprojectId}/files/${path}`)
 }
+
+// ── Search ─────────────────────────────────────────────────────
+
+export interface SearchResult {
+  entity_type: string
+  entity_id: string
+  title: string
+  snippet: string
+  parent_id: string
+}
+
+export interface SearchResponse {
+  query: string
+  total: number
+  results: SearchResult[]
+  grouped: Record<string, SearchResult[]>
+}
+
+export function searchAll(q: string, types?: string): Promise<SearchResponse> {
+  const params = new URLSearchParams({ q })
+  if (types) params.set('types', types)
+  return request<SearchResponse>(`/api/search?${params}`)
+}
+
+export function rebuildSearchIndex(): Promise<{ status: string; indexed: number }> {
+  return request<{ status: string; indexed: number }>('/api/search/rebuild', { method: 'POST' })
+}
+
+// ── Execution ──────────────────────────────────────────────────
+
+export interface ExecResponse {
+  id: string
+  action: string
+  command: string
+  exit_code: number
+  stdout: string
+  stderr: string
+  duration_ms: number
+  timed_out: boolean
+  working_dir: string
+  ecosystem: string
+}
+
+export interface ExecHistoryEntry {
+  id: string
+  command: string
+  action_type: string
+  exit_code: number
+  duration_ms: number
+  started_at: string
+}
+
+export function executeInSubproject(
+  subprojectId: string,
+  action: string,
+  command = '',
+  timeout = 60,
+): Promise<ExecResponse> {
+  return request<ExecResponse>(`/api/subprojects/${subprojectId}/exec`, {
+    method: 'POST',
+    body: JSON.stringify({ action, command, timeout }),
+  })
+}
+
+export function getExecHistory(subprojectId: string): Promise<ExecHistoryEntry[]> {
+  return request<ExecHistoryEntry[]>(`/api/subprojects/${subprojectId}/exec/history`)
+}
+
+export function getEcosystem(subprojectId: string): Promise<{
+  ecosystem: string
+  workspace_exists: boolean
+  workspace_path?: string
+  files?: string[]
+}> {
+  return request(`/api/subprojects/${subprojectId}/ecosystem`)
+}
+
+// ── Providers ──────────────────────────────────────────────────
+
+export interface ProviderInfo {
+  id: string
+  name: string
+  status: string
+  models: Array<{ name: string; size_gb?: number }>
+  requires: string
+  configured: boolean
+}
+
+export interface ProvidersResponse {
+  providers: ProviderInfo[]
+  active_provider: string
+  active_model: string
+  recommended: string
+  mode: string
+  setup_hint: string
+}
+
+export function getProviders(): Promise<ProvidersResponse> {
+  return request<ProvidersResponse>('/api/system/providers')
+}

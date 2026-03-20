@@ -1,27 +1,26 @@
-import { type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
+import { Sidebar } from './Sidebar'
+import { CommandPalette } from '@/components/common/CommandPalette'
 
-import { AgentBar } from '@/components/layout/AgentBar'
-import { Sidebar } from '@/components/layout/Sidebar'
-import { useAppStore } from '@/stores/app'
+export function Shell({ children }: { children: React.ReactNode }) {
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
-interface ShellProps {
-  children: ReactNode
-}
-
-export function Shell({ children }: ShellProps) {
-  const context = useAppStore((s) => s.agentContext)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   return (
-    <div className="grid h-screen grid-rows-[1fr_auto] bg-zinc-950 text-zinc-100">
-      <div className="grid min-h-0 grid-cols-[auto_1fr]">
-        <Sidebar />
-        <main className="min-h-0 overflow-auto bg-zinc-950 p-4">{children}</main>
-      </div>
-      <AgentBar
-        projectId={context?.projectId}
-        resourceId={context?.resourceId}
-        subprojectId={context?.subprojectId}
-      />
+    <div className="flex h-screen bg-zinc-950 text-zinc-100">
+      <Sidebar onOpenPalette={() => setPaletteOpen(true)} />
+      <main className="flex-1 overflow-auto p-4">{children}</main>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   )
 }

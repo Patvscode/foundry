@@ -13,6 +13,7 @@ from foundry.api.router import router as api_router
 from foundry.config import FoundrySettings, get_settings
 from foundry.jobs.runner import JobRunner
 from foundry.logging_setup import configure_logging
+from foundry.search.engine import rebuild_index
 from foundry.storage.database import init_database
 
 
@@ -24,6 +25,13 @@ async def lifespan(app: FastAPI):
 
     db_path = Path(settings.storage.data_dir) / "foundry.db"
     db = await init_database(db_path)
+
+    # Rebuild search index on startup
+    try:
+        indexed = await rebuild_index(db)
+        logger.info("Search index rebuilt: %d entities", indexed)
+    except Exception as e:
+        logger.warning("Search index rebuild failed (non-fatal): %s", e)
 
     # Start job runner
     runner = JobRunner(db, settings)
@@ -51,13 +59,15 @@ async def lifespan(app: FastAPI):
         await db.close()
 
 
-app = FastAPI(title="Foundry", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Foundry", version="0.2.0-rc", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:8120",
+        "http://127.0.0.1:8120",
     ],
     allow_credentials=True,
     allow_methods=["*"],
