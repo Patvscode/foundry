@@ -1,15 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Folder } from 'lucide-react'
 import { useState } from 'react'
 
-import { addResource, getProject, getResource, getResources, type Resource } from '@/api/client'
+import {
+  acceptProposal,
+  addResource,
+  getProject,
+  getResource,
+  getResources,
+  getSubprojects,
+  rejectProposal,
+  type Resource,
+} from '@/api/client'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import { ProposalCard } from '@/components/resource/ProposalCard'
 import { ResourceCard } from '@/components/resource/ResourceCard'
 
 interface ProjectWorkspaceRouteProps {
   id: string
 }
 
-// Coarse statuses that indicate active processing
 const ACTIVE_COARSE = new Set(['pending', 'processing'])
 
 export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
@@ -18,40 +28,37 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
   const [newUrl, setNewUrl] = useState('')
   const [urlError, setUrlError] = useState('')
 
-  // Fetch project
   const { data: project, isPending, error } = useQuery({
     queryKey: ['project', id],
     queryFn: () => getProject(id),
   })
 
-  // Fetch resources — poll every 3s if any are actively processing
   const resources = useQuery({
     queryKey: ['resources', id],
     queryFn: () => getResources(id),
     refetchInterval: (query) => {
       const data = query.state.data
-      if (data?.some((r: Resource) => ACTIVE_COARSE.has(r.status))) {
-        return 3000
-      }
+      if (data?.some((r: Resource) => ACTIVE_COARSE.has(r.status))) return 3000
       return false
     },
   })
 
-  // Fetch selected resource detail (with extraction result)
   const selectedResource = useQuery({
     queryKey: ['resource', selectedResourceId],
     queryFn: () => (selectedResourceId ? getResource(selectedResourceId) : Promise.reject()),
     enabled: !!selectedResourceId,
     refetchInterval: (query) => {
       const data = query.state.data
-      if (data && ACTIVE_COARSE.has(data.status)) {
-        return 3000
-      }
+      if (data && ACTIVE_COARSE.has(data.status)) return 3000
       return false
     },
   })
 
-  // Add resource mutation
+  const subprojects = useQuery({
+    queryKey: ['subprojects', id],
+    queryFn: () => getSubprojects(id),
+  })
+
   const addMutation = useMutation({
     mutationFn: (url: string) => addResource(id, url),
     onSuccess: async (resource) => {
@@ -59,17 +66,31 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
       setSelectedResourceId(resource.id)
       setNewUrl('')
     },
-    onError: () => {
-      setUrlError('Failed to add resource.')
+    onError: () => setUrlError('Failed to add resource.'),
+  })
+
+  const acceptMut = useMutation({
+    mutationFn: ({ resourceId, idx, edits }: { resourceId: string; idx: number; edits: Record<string, string> }) =>
+      acceptProposal(resourceId, idx, edits),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['resource', selectedResourceId] })
+      await queryClient.invalidateQueries({ queryKey: ['subprojects', id] })
+      await queryClient.invalidateQueries({ queryKey: ['projects'] })
+      await queryClient.invalidateQueries({ queryKey: ['project', id] })
+    },
+  })
+
+  const rejectMut = useMutation({
+    mutationFn: ({ resourceId, idx }: { resourceId: string; idx: number }) =>
+      rejectProposal(resourceId, idx),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['resource', selectedResourceId] })
     },
   })
 
   const handleAddResource = () => {
     const trimmed = newUrl.trim()
-    if (!trimmed) {
-      setUrlError('URL is required')
-      return
-    }
+    if (!trimmed) { setUrlError('URL is required'); return }
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
       setUrlError('URL must start with http:// or https://')
       return
@@ -78,16 +99,8 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
     addMutation.mutate(trimmed)
   }
 
-  if (isPending) {
-    return <div className="p-8 text-sm text-zinc-400">Loading project…</div>
-  }
-  if (error || !project) {
-    return (
-      <div className="p-8">
-        <StatusBadge status="error" label="Project not found" />
-      </div>
-    )
-  }
+  if (isPending) return <div className="p-8 text-sm text-zinc-400">Loading project…</div>
+  if (error || !project) return <div className="p-8"><StatusBadge status="error" label="Project not found" /></div>
 
   const sel = selectedResource.data
   const proposals = sel?.extraction?.discovered_projects
@@ -95,18 +108,21 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Project header */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <h1 className="text-lg font-semibold text-zinc-100">{project.name}</h1>
-        {project.description && <p className="mt-1 text-sm text-zinc-400">{project.description}</p>}
+      <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <div>
+          <h1 className="text-lg font-semibold text-zinc-100">{project.name}</h1>
+          {project.description && <p className="mt-1 text-sm text-zinc-400">{project.description}</p>}
+        </div>
+        <div className="text-xs text-zinc-500">{project.subproject_count} subprojects</div>
       </div>
 
       {/* Three-panel workspace */}
       <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr_300px] gap-4">
-        {/* Left: Resources */}
-        <section className="flex flex-col gap-3 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-          <h2 className="text-xs uppercase tracking-wide text-zinc-500">Resources</h2>
 
-          {/* Add resource input */}
+        {/* Left: Resources + Subprojects */}
+        <section className="flex flex-col gap-3 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          {/* Add resource */}
+          <h2 className="text-xs uppercase tracking-wide text-zinc-500">Resources</h2>
           <div className="space-y-1">
             <div className="flex gap-2">
               <input
@@ -132,20 +148,43 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
           </div>
 
           {/* Resource list */}
-          <div className="flex flex-1 flex-col gap-2">
-            {resources.data?.length ? (
-              resources.data.map((r) => (
-                <ResourceCard
-                  key={r.id}
-                  resource={r}
-                  selected={r.id === selectedResourceId}
-                  onClick={() => setSelectedResourceId(r.id)}
-                />
-              ))
-            ) : (
-              <p className="text-sm text-zinc-400">No resources yet. Add a URL to get started.</p>
-            )}
+          <div className="space-y-2">
+            {resources.data?.map((r) => (
+              <ResourceCard
+                key={r.id}
+                resource={r}
+                selected={r.id === selectedResourceId}
+                onClick={() => setSelectedResourceId(r.id)}
+              />
+            ))}
           </div>
+
+          {/* Subprojects */}
+          {subprojects.data && subprojects.data.length > 0 && (
+            <>
+              <h2 className="mt-4 text-xs uppercase tracking-wide text-zinc-500">
+                Subprojects ({subprojects.data.length})
+              </h2>
+              <div className="space-y-1">
+                {subprojects.data.map((sp) => (
+                  <div
+                    key={sp.id}
+                    className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2"
+                  >
+                    <Folder size={14} className="text-emerald-400" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm text-zinc-200">{sp.name}</div>
+                      <div className="text-xs text-zinc-500">{sp.type} · {sp.complexity}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {!resources.data?.length && !subprojects.data?.length && (
+            <p className="text-sm text-zinc-400">No resources yet. Add a URL to get started.</p>
+          )}
         </section>
 
         {/* Center: Resource detail */}
@@ -166,13 +205,9 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
               {sel.extraction?.summary && (
                 <div>
                   <h3 className="text-xs uppercase tracking-wide text-zinc-500">Summary</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-zinc-300">
-                    {sel.extraction.summary}
-                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-300">{sel.extraction.summary}</p>
                   {sel.extraction.model_used === 'fallback' && (
-                    <p className="mt-1 text-xs text-amber-400">
-                      ⚠ Placeholder result — no LLM provider was available
-                    </p>
+                    <p className="mt-1 text-xs text-amber-400">⚠ Placeholder result — no LLM provider was available</p>
                   )}
                 </div>
               )}
@@ -182,9 +217,7 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
                   <h3 className="text-xs uppercase tracking-wide text-zinc-500">Key Concepts</h3>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {sel.extraction.key_concepts.map((c, i) => (
-                      <span key={i} className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
-                        {c}
-                      </span>
+                      <span key={i} className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">{c}</span>
                     ))}
                   </div>
                 </div>
@@ -208,41 +241,30 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
           )}
         </section>
 
-        {/* Right: Discovered proposals */}
+        {/* Right: Proposals */}
         <section className="overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-4">
           <h2 className="text-xs uppercase tracking-wide text-zinc-500">Discovered Projects</h2>
           {proposals && proposals.length > 0 ? (
             <div className="mt-3 space-y-3">
               {proposals.map((p, i) => (
-                <div
+                <ProposalCard
                   key={i}
-                  className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-zinc-200">{p.suggested_name}</span>
-                    <span className={`text-xs ${p.confidence >= 0.7 ? 'text-emerald-400' : p.confidence >= 0.3 ? 'text-amber-400' : 'text-zinc-500'}`}>
-                      {Math.round(p.confidence * 100)}%
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-zinc-400">{p.description}</p>
-                  {p.is_synthetic && (
-                    <p className="mt-1 text-xs text-amber-400">⚠ Placeholder — no LLM available</p>
-                  )}
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400">
-                      {p.type}
-                    </span>
-                    <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400">
-                      {p.complexity}
-                    </span>
-                  </div>
-                </div>
+                  proposal={p}
+                  index={i}
+                  disabled={acceptMut.isPending || rejectMut.isPending}
+                  onAccept={(idx, edits) =>
+                    acceptMut.mutate({ resourceId: sel!.id, idx, edits })
+                  }
+                  onReject={(idx) =>
+                    rejectMut.mutate({ resourceId: sel!.id, idx })
+                  }
+                />
               ))}
             </div>
           ) : sel && sel.pipeline_status === 'discovered' ? (
-            <p className="mt-3 text-sm text-zinc-400">No projects discovered in this resource.</p>
+            <p className="mt-3 text-sm text-zinc-400">No projects discovered.</p>
           ) : sel ? (
-            <p className="mt-3 text-sm text-zinc-400">Waiting for analysis to complete…</p>
+            <p className="mt-3 text-sm text-zinc-400">Waiting for analysis…</p>
           ) : (
             <p className="mt-3 text-sm text-zinc-400">Select a resource to see proposals.</p>
           )}

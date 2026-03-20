@@ -131,3 +131,42 @@ export function addResource(projectId: string, url: string): Promise<Resource> {
     body: JSON.stringify({ url }),
   })
 }
+
+// ── Subprojects ────────────────────────────────────────────────
+
+export interface Subproject {
+  id: string
+  project_id: string
+  name: string
+  description: string
+  type: string
+  status: string
+  workspace_path: string
+  dependencies: string[]
+  setup_steps: string[]
+  complexity: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export function acceptProposal(
+  resourceId: string,
+  proposalIndex: number,
+  edits?: { suggested_name?: string; description?: string; type?: string },
+): Promise<Subproject> {
+  return request<Subproject>(`/api/resources/${resourceId}/proposals/${proposalIndex}/accept`, {
+    method: 'POST',
+    body: JSON.stringify(edits ?? {}),
+  })
+}
+
+export function rejectProposal(resourceId: string, proposalIndex: number): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/resources/${resourceId}/proposals/${proposalIndex}/reject`, {
+    method: 'POST',
+  })
+}
+
+export function getSubprojects(projectId: string): Promise<Subproject[]> {
+  return request<Subproject[]>(`/api/projects/${projectId}/subprojects`)
+}

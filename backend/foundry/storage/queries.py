@@ -344,3 +344,132 @@ async def mark_stale_jobs(db: Database) -> int:
     )
     await db.commit()
     return cursor.rowcount
+
+
+# ── Subprojects ───────────────────────────────────────────────────────────
+
+
+async def insert_subproject(
+    db: Database,
+    subproject_id: str,
+    project_id: str,
+    name: str,
+    description: str = "",
+    subproject_type: str = "research",
+    workspace_path: str = "",
+    dependencies: list[str] | None = None,
+    setup_steps: list[str] | None = None,
+    complexity: str = "medium",
+    sort_order: int = 0,
+) -> dict[str, Any]:
+    """Insert an accepted subproject."""
+    now = _now()
+    await db.execute(
+        """
+        INSERT INTO subprojects
+            (id, project_id, name, description, type, status, workspace_path,
+             dependencies, setup_steps, complexity, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            subproject_id, project_id, name, description, subproject_type,
+            workspace_path, json.dumps(dependencies or []),
+            json.dumps(setup_steps or []), complexity, sort_order, now, now,
+        ),
+    )
+    await db.commit()
+    return {
+        "id": subproject_id,
+        "project_id": project_id,
+        "name": name,
+        "description": description,
+        "type": subproject_type,
+        "status": "approved",
+        "workspace_path": workspace_path,
+        "dependencies": dependencies or [],
+        "setup_steps": setup_steps or [],
+        "complexity": complexity,
+        "sort_order": sort_order,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+async def list_subprojects_for_project(db: Database, project_id: str) -> list[dict[str, Any]]:
+    """List subprojects for a project, ordered by sort_order."""
+    rows = await db.fetchall(
+        "SELECT * FROM subprojects WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC",
+        (project_id,),
+    )
+    results = []
+    for row in rows:
+        d = dict(row)
+        for field in ("dependencies", "setup_steps"):
+            if d.get(field):
+                try:
+                    d[field] = json.loads(d[field])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        results.append(d)
+    return results
+
+
+# ── Provenance ────────────────────────────────────────────────────────────
+
+
+async def insert_provenance_link(
+    db: Database,
+    resource_id: str,
+    target_type: str,
+    target_id: str,
+    context: str = "",
+    quote: str = "",
+    confidence: float = 1.0,
+) -> str:
+    """Create a provenance link from a resource to a target entity."""
+    link_id = new_id()
+    await db.execute(
+        """
+        INSERT INTO provenance_links (id, resource_id, target_type, target_id, context, quote, confidence, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (link_id, resource_id, target_type, target_id, context, quote, confidence, _now()),
+    )
+    await db.commit()
+    return link_id
+
+
+# ── Proposal Decisions ────────────────────────────────────────────────────
+
+
+async def update_proposal_decision(
+    db: Database,
+    resource_id: str,
+    proposal_index: int,
+    decision: str,
+    edited_fields: dict[str, Any] | None = None,
+) -> bool:
+    """Update the decision on a specific proposal within discovered_projects JSON.
+
+    Also merges any edited fields (name, description, type) into the proposal.
+    """
+    result = await get_extraction_result(db, resource_id)
+    if result is None:
+        return False
+
+    proposals = result.get("discovered_projects")
+    if not isinstance(proposals, list) or proposal_index >= len(proposals):
+        return False
+
+    proposals[proposal_index]["decision"] = decision
+    if edited_fields:
+        for key, value in edited_fields.items():
+            if key in ("suggested_name", "description", "type"):
+                proposals[proposal_index][key] = value
+
+    await db.execute(
+        "UPDATE extraction_results SET discovered_projects = ? WHERE resource_id = ?",
+        (json.dumps(proposals), resource_id),
+    )
+    await db.commit()
+    return True
