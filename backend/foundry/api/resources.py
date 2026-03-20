@@ -21,6 +21,17 @@ from foundry.storage.queries import (
 router = APIRouter(tags=["resources"])
 
 
+def _detect_resource_type(url: str) -> str:
+    """Detect resource type from URL pattern."""
+    import re
+    u = url.strip().lower()
+    if re.match(r"^https?://(www\.)?(youtube\.com/(watch|shorts|live)|youtu\.be/)", u):
+        return "youtube"
+    if u.endswith(".pdf") or "arxiv.org/pdf/" in u:
+        return "pdf"
+    return "webpage"
+
+
 class AddResourceRequest(BaseModel):
     url: str
 
@@ -44,13 +55,16 @@ async def add_resource(project_id: str, body: AddResourceRequest, request: Reque
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Detect resource type from URL
+    resource_type = _detect_resource_type(body.url)
+
     # Create resource record
     resource_id = new_id()
     resource = await insert_resource(
         db,
         resource_id=resource_id,
         project_id=project_id,
-        resource_type="webpage",  # MVP: only webpage handler
+        resource_type=resource_type,
         url=body.url,
         title=body.url,  # Will be updated by handler during extraction
     )
