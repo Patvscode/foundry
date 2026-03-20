@@ -107,7 +107,7 @@ async def run_pipeline(
     analysis: AnalysisResult | None = None
 
     # Try coordinated mode if configured and provider is healthy
-    coord_config = _build_coordinator_config(settings, provider)
+    coord_config = await _build_coordinator_config(settings, db)
     if coord_config.enabled:
         try:
             coord_result = await run_coordinated_analysis(extracted, coord_config)
@@ -145,28 +145,54 @@ async def run_pipeline(
     from foundry.storage.queries import update_extraction_proposals
     await update_extraction_proposals(db, resource_id, proposals)
 
+    # Store pipeline metadata alongside the status
+    analysis_mode = "coordinated" if (coord_config.enabled and analysis and analysis.model_used == "coordinated") else "sequential"
     await update_resource_status(db, resource_id, "discovered")
+
+    # Update extraction result with pipeline metadata
+    from foundry.storage.queries import update_extraction_metadata
+    await update_extraction_metadata(db, resource_id, {
+        "handler": handler_name,
+        "provider": provider.name,
+        "model": getattr(provider, "model", ""),
+        "analysis_mode": analysis_mode,
+    })
+
     logger.info(
-        "Pipeline complete for resource %s (%s) via handler=%s",
-        resource_id, url, handler_name,
+        "Pipeline complete for resource %s (%s) handler=%s provider=%s mode=%s",
+        resource_id, url, handler_name, provider.name, analysis_mode,
     )
 
 
-def _build_coordinator_config(
+async def _build_coordinator_config(
     settings: FoundrySettings,
-    default_provider: LLMProvider,
+    db: Database,
 ) -> CoordinatorConfig:
-    """Build coordinator config from settings. Coordinated mode requires explicit opt-in."""
-    # Coordinated mode is opt-in via environment or future config field
-    # For now, it's disabled by default — single-model always works
-    import os
-    if not os.environ.get("FOUNDRY_INGESTION_COORDINATED"):
+    """Build coordinator config from persistent runtime settings."""
+    from foundry.api.config_control import get_all_settings
+    from foundry.agents.provider_factory import get_provider_for_role
+
+    runtime = await get_all_settings(db)
+    swarm_mode = runtime.get("ingestion.swarm.mode", "single")
+
+    if swarm_mode != "swarm":
         return CoordinatorConfig(enabled=False)
+
+    # Build swarm settings dict for provider_factory
+    swarm_settings = {
+        "coordinator_provider": runtime.get("ingestion.swarm.coordinator_provider", ""),
+        "coordinator_model": runtime.get("ingestion.swarm.coordinator_model", ""),
+        "worker_provider": runtime.get("ingestion.swarm.worker_provider", ""),
+        "worker_model": runtime.get("ingestion.swarm.worker_model", ""),
+    }
+
+    coordinator_provider = await get_provider_for_role(settings, "coordinator", swarm_settings)
+    worker_provider = await get_provider_for_role(settings, "worker", swarm_settings)
 
     return CoordinatorConfig(
         enabled=True,
-        max_parallel_workers=settings.ingestion.max_concurrent,
-        coordinator_provider=default_provider,
-        worker_provider=default_provider,
-        use_critic=bool(os.environ.get("FOUNDRY_INGESTION_CRITIC")),
+        max_parallel_workers=int(runtime.get("ingestion.swarm.max_workers", 4)),
+        coordinator_provider=coordinator_provider,
+        worker_provider=worker_provider,
+        use_critic=bool(runtime.get("ingestion.swarm.use_critic", False)),
     )

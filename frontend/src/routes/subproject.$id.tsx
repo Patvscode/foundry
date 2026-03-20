@@ -13,6 +13,7 @@ import {
   getTasks,
 } from '@/api/client'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import { ExecutionPanel } from '@/components/workspace/ExecutionPanel'
 import { FileTree } from '@/components/workspace/FileTree'
 import { NoteEditor } from '@/components/workspace/NoteEditor'
 import { TaskList } from '@/components/workspace/TaskList'
@@ -21,7 +22,7 @@ interface SubprojectRouteProps {
   id: string
 }
 
-type Tab = 'files' | 'tasks' | 'notes' | 'next-steps'
+type Tab = 'files' | 'tasks' | 'notes' | 'terminal' | 'next-steps'
 
 export function SubprojectRoute({ id }: SubprojectRouteProps) {
   const queryClient = useQueryClient()
@@ -72,6 +73,7 @@ export function SubprojectRoute({ id }: SubprojectRouteProps) {
     { id: 'files', label: 'Files' },
     { id: 'tasks', label: 'Tasks' },
     { id: 'notes', label: 'Notes' },
+    { id: 'terminal', label: 'Terminal' },
     { id: 'next-steps', label: 'Next Steps' },
   ]
 
@@ -156,6 +158,8 @@ export function SubprojectRoute({ id }: SubprojectRouteProps) {
             {activeTab === 'tasks' && <TaskList subprojectId={id} />}
 
             {activeTab === 'notes' && <NoteEditor subprojectId={id} />}
+
+            {activeTab === 'terminal' && <ExecutionPanel subprojectId={id} />}
 
             {activeTab === 'next-steps' && (
               <div className="space-y-4">

@@ -460,15 +460,52 @@ export interface ProviderInfo {
   configured: boolean
 }
 
+export interface SwarmConfig {
+  mode: string
+  coordinator_provider: string
+  coordinator_model: string
+  worker_provider: string
+  worker_model: string
+  max_workers: number
+  use_critic: boolean
+  max_depth: number
+}
+
 export interface ProvidersResponse {
   providers: ProviderInfo[]
   active_provider: string
   active_model: string
   recommended: string
   mode: string
+  swarm: SwarmConfig
+  setup_completed: boolean
   setup_hint: string
 }
 
 export function getProviders(): Promise<ProvidersResponse> {
   return request<ProvidersResponse>('/api/system/providers')
+}
+
+// ── Runtime Config Control ─────────────────────────────────────
+
+export interface RuntimeConfigResponse {
+  settings: Record<string, unknown>
+  allowed_keys: string[]
+}
+
+export interface ConfigUpdateResponse {
+  applied: Record<string, unknown>
+  rejected: Record<string, string>
+  all_settings: Record<string, unknown>
+}
+
+export function getRuntimeConfig(): Promise<RuntimeConfigResponse> {
+  return request<RuntimeConfigResponse>('/api/system/config/runtime')
+}
+
+export function updateRuntimeConfig(settings: Record<string, unknown>): Promise<ConfigUpdateResponse> {
+  return request<ConfigUpdateResponse>('/api/system/config/runtime', {
+    method: 'PUT',
+    body: JSON.stringify({ settings }),
+  })
 }

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import { createProject, getHealth, getProjects } from '@/api/client'
+import { createProject, getHealth, getProjects, getProviders } from '@/api/client'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { ProviderStatus } from '@/components/common/ProviderStatus'
 
@@ -16,6 +16,14 @@ export function DashboardRoute() {
 
   const health = useQuery({ queryKey: ['health'], queryFn: getHealth, retry: 1 })
   const projects = useQuery({ queryKey: ['projects'], queryFn: getProjects })
+  const providersQ = useQuery({ queryKey: ['providers'], queryFn: getProviders, retry: 1 })
+
+  // Redirect to onboarding if setup not completed
+  useEffect(() => {
+    if (providersQ.data && !providersQ.data.setup_completed) {
+      navigate({ to: '/onboarding' })
+    }
+  }, [providersQ.data, navigate])
 
   const create = useMutation({
     mutationFn: (name: string) => createProject(name),

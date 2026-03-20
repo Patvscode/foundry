@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from foundry.api import (
     agent_chat,
+    config_control,
     execution,
     files,
     notes,
@@ -28,3 +29,4 @@ router.include_router(agent_chat.router)
 router.include_router(search.router)
 router.include_router(execution.router)
 router.include_router(providers.router)
+router.include_router(config_control.router)

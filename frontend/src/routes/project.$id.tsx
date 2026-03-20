@@ -222,12 +222,35 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
                 </div>
               )}
 
+              {/* Pipeline info */}
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-400">
+                  {sel.type}
+                </span>
+                <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-400">
+                  {sel.pipeline_status}
+                </span>
+                {sel.extraction?.model_used && (
+                  <span className={`rounded-full border px-2 py-0.5 ${
+                    sel.extraction.model_used === 'fallback'
+                      ? 'border-amber-500/30 text-amber-400'
+                      : sel.extraction.model_used === 'coordinated'
+                        ? 'border-blue-500/30 text-blue-400'
+                        : 'border-emerald-500/30 text-emerald-400'
+                  }`}>
+                    {sel.extraction.model_used === 'fallback' ? '⚠ fallback' :
+                     sel.extraction.model_used === 'coordinated' ? '🔀 swarm' :
+                     `✅ ${sel.extraction.model_used}`}
+                  </span>
+                )}
+              </div>
+
               {sel.extraction?.summary && (
                 <div>
                   <h3 className="text-xs uppercase tracking-wide text-zinc-500">Summary</h3>
                   <p className="mt-2 text-sm leading-relaxed text-zinc-300">{sel.extraction.summary}</p>
                   {sel.extraction.model_used === 'fallback' && (
-                    <p className="mt-1 text-xs text-amber-400">⚠ Placeholder result — no LLM provider was available</p>
+                    <p className="mt-1 text-xs text-amber-400">⚠ Placeholder — configure a provider in Settings for real analysis</p>
                   )}
                 </div>
               )}

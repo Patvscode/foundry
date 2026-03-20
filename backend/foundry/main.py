@@ -26,6 +26,13 @@ async def lifespan(app: FastAPI):
     db_path = Path(settings.storage.data_dir) / "foundry.db"
     db = await init_database(db_path)
 
+    # Load persisted runtime settings over file config
+    try:
+        from foundry.api.config_control import load_runtime_settings_into_app
+        await load_runtime_settings_into_app(db, settings)
+    except Exception as e:
+        logger.warning("Failed to load runtime settings (non-fatal): %s", e)
+
     # Rebuild search index on startup
     try:
         indexed = await rebuild_index(db)

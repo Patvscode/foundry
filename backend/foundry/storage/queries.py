@@ -801,3 +801,20 @@ async def list_agent_messages(db: Database, session_id: str) -> list[dict[str, A
         (session_id,),
     )
     return [dict(row) for row in rows]
+
+
+async def update_extraction_metadata(
+    db: Database,
+    resource_id: str,
+    metadata: dict[str, Any],
+) -> None:
+    """Store pipeline metadata (handler, provider, mode) on the extraction result."""
+    try:
+        await db.execute(
+            "UPDATE extraction_results SET raw_response = json_patch(COALESCE(raw_response, '{}'), ?) WHERE resource_id = ?",
+            (json.dumps({"_pipeline": metadata}), resource_id),
+        )
+        await db.commit()
+    except Exception:
+        # json_patch may not be available on all SQLite versions; non-fatal
+        pass
