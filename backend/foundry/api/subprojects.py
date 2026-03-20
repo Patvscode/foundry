@@ -1,84 +1,70 @@
-"""Subproject API endpoints. Accept/reject proposals, list subprojects."""
+"""Subproject API endpoints. Accept/reject proposals by proposal_id, edit proposals, list subprojects."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from foundry.storage.database import Database
 from foundry.storage.queries import (
-    get_extraction_result,
     get_project,
+    get_proposal,
     get_resource,
+    get_subproject,
     insert_provenance_link,
     insert_subproject,
     list_subprojects_for_project,
     new_id,
     update_proposal_decision,
+    update_proposal_edits,
 )
 from foundry.workspace.manager import create_subproject_workspace
 
 router = APIRouter(tags=["subprojects"])
 
 
-class ProposalDecisionRequest(BaseModel):
-    """Optionally include edited fields when accepting."""
-    suggested_name: str | None = None
-    description: str | None = None
-    type: str | None = None
+class EditProposalRequest(BaseModel):
+    edited_name: str | None = None
+    edited_description: str | None = None
+    edited_type: str | None = None
 
 
-@router.post("/resources/{resource_id}/proposals/{proposal_index}/accept", status_code=201)
+@router.post("/resources/{resource_id}/proposals/{proposal_id}/accept")
 async def accept_proposal(
     resource_id: str,
-    proposal_index: int,
-    body: ProposalDecisionRequest,
+    proposal_id: str,
     request: Request,
-) -> dict[str, Any]:
+) -> JSONResponse:
     db: Database = request.app.state.db
 
-    # Get resource and extraction result
     resource = await get_resource(db, resource_id)
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found")
 
-    extraction = await get_extraction_result(db, resource_id)
-    if extraction is None:
-        raise HTTPException(status_code=404, detail="No extraction result for this resource")
+    proposal = await get_proposal(db, resource_id, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
 
-    proposals = extraction.get("discovered_projects", [])
-    if not isinstance(proposals, list) or proposal_index >= len(proposals):
-        raise HTTPException(status_code=404, detail=f"Proposal index {proposal_index} not found")
+    # Idempotent: if already accepted, return existing subproject with 200
+    if proposal.get("decision") == "accepted" and proposal.get("subproject_id"):
+        existing = await get_subproject(db, proposal["subproject_id"])
+        if existing is not None:
+            return JSONResponse(content=existing, status_code=200)
 
-    proposal = proposals[proposal_index]
-    if proposal.get("decision") == "accepted":
-        raise HTTPException(status_code=409, detail="Proposal already accepted")
-
-    # Get the project for workspace path
     project = await get_project(db, resource["project_id"])
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Apply edits if provided
-    name = body.suggested_name or proposal.get("suggested_name", "Unnamed")
-    description = body.description or proposal.get("description", "")
-    subproject_type = body.type or proposal.get("type", "research")
+    # Use edited fields if they exist, otherwise use original proposal fields
+    name = proposal.get("edited_name") or proposal.get("suggested_name", "Unnamed")
+    description = proposal.get("edited_description") or proposal.get("description", "")
+    subproject_type = proposal.get("edited_type") or proposal.get("type", "research")
 
-    # Build edited fields dict for persisting edits to the proposal
-    edited_fields: dict[str, Any] = {}
-    if body.suggested_name:
-        edited_fields["suggested_name"] = body.suggested_name
-    if body.description:
-        edited_fields["description"] = body.description
-    if body.type:
-        edited_fields["type"] = body.type
-
-    # Create subproject
     subproject_id = new_id()
 
-    # Create workspace directory
     workspace_path = create_subproject_workspace(
         project_path=project["workspace_path"],
         subproject_id=subproject_id,
@@ -88,7 +74,6 @@ async def accept_proposal(
         setup_steps=proposal.get("setup_steps", []),
     )
 
-    # Insert subproject into DB
     subproject = await insert_subproject(
         db,
         subproject_id=subproject_id,
@@ -100,10 +85,9 @@ async def accept_proposal(
         dependencies=proposal.get("dependencies"),
         setup_steps=proposal.get("setup_steps"),
         complexity=proposal.get("complexity", "medium"),
-        sort_order=proposal_index,
+        sort_order=0,
     )
 
-    # Create provenance link
     await insert_provenance_link(
         db,
         resource_id=resource_id,
@@ -113,25 +97,71 @@ async def accept_proposal(
         confidence=proposal.get("confidence", 1.0),
     )
 
-    # Mark proposal as accepted in the extraction result
-    await update_proposal_decision(db, resource_id, proposal_index, "accepted", edited_fields)
+    await update_proposal_decision(
+        db, resource_id, proposal_id, "accepted", subproject_id=subproject_id
+    )
 
-    return subproject
+    return JSONResponse(content=subproject, status_code=201)
 
 
-@router.post("/resources/{resource_id}/proposals/{proposal_index}/reject")
+@router.post("/resources/{resource_id}/proposals/{proposal_id}/reject")
 async def reject_proposal(
     resource_id: str,
-    proposal_index: int,
+    proposal_id: str,
     request: Request,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     db: Database = request.app.state.db
 
-    success = await update_proposal_decision(db, resource_id, proposal_index, "rejected")
-    if not success:
+    proposal = await get_proposal(db, resource_id, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
+
+    # Cannot reject an accepted proposal
+    if proposal.get("decision") == "accepted":
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot reject an accepted proposal — delete the subproject first.",
+        )
+
+    # Idempotent: rejecting an already rejected proposal is a no-op
+    if proposal.get("decision") == "rejected":
+        return {"status": "rejected", "proposal_id": proposal_id}
+
+    updated = await update_proposal_decision(db, resource_id, proposal_id, "rejected")
+    if updated is None:
         raise HTTPException(status_code=404, detail="Proposal not found")
 
-    return {"status": "rejected", "proposal_index": str(proposal_index)}
+    return {"status": "rejected", "proposal_id": proposal_id}
+
+
+@router.put("/resources/{resource_id}/proposals/{proposal_id}")
+async def edit_proposal(
+    resource_id: str,
+    proposal_id: str,
+    body: EditProposalRequest,
+    request: Request,
+) -> dict[str, Any]:
+    db: Database = request.app.state.db
+
+    proposal = await get_proposal(db, resource_id, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
+
+    if proposal.get("decision") == "accepted":
+        raise HTTPException(status_code=409, detail="Cannot edit an accepted proposal.")
+
+    updated = await update_proposal_edits(
+        db,
+        resource_id,
+        proposal_id,
+        edited_name=body.edited_name,
+        edited_description=body.edited_description,
+        edited_type=body.edited_type,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+
+    return updated
 
 
 @router.get("/projects/{project_id}/subprojects")

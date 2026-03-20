@@ -234,6 +234,7 @@ async def update_extraction_proposals(
     """Update the discovered_projects field on the extraction result."""
     proposals_json = json.dumps([
         {
+            "proposal_id": p.proposal_id,
             "suggested_name": p.suggested_name,
             "description": p.description,
             "type": p.type,
@@ -244,6 +245,12 @@ async def update_extraction_proposals(
             "confidence": p.confidence,
             "source_context": p.source_context,
             "is_synthetic": p.is_synthetic,
+            "decision": p.decision,
+            "decision_at": p.decision_at,
+            "subproject_id": p.subproject_id,
+            "edited_name": p.edited_name,
+            "edited_description": p.edited_description,
+            "edited_type": p.edited_type,
         }
         for p in proposals
     ])
@@ -255,7 +262,7 @@ async def update_extraction_proposals(
 
 
 async def get_extraction_result(db: Database, resource_id: str) -> dict[str, Any] | None:
-    """Fetch extraction result for a resource."""
+    """Fetch extraction result for a resource. Normalizes proposals on read."""
     row = await db.fetchone(
         "SELECT * FROM extraction_results WHERE resource_id = ? ORDER BY created_at DESC LIMIT 1",
         (resource_id,),
@@ -270,6 +277,24 @@ async def get_extraction_result(db: Database, resource_id: str) -> dict[str, Any
                 d[field] = json.loads(d[field])
             except (json.JSONDecodeError, TypeError):
                 pass
+
+    # Normalize proposals: backfill missing proposal_id and decision fields
+    proposals = d.get("discovered_projects")
+    if isinstance(proposals, list):
+        modified = False
+        for p in proposals:
+            before_keys = set(p.keys())
+            _normalize_proposal(p)
+            if set(p.keys()) != before_keys:
+                modified = True
+        if modified:
+            await db.execute(
+                "UPDATE extraction_results SET discovered_projects = ? WHERE resource_id = ?",
+                (json.dumps(proposals), resource_id),
+            )
+            await db.commit()
+        d["discovered_projects"] = proposals
+
     return d
 
 
@@ -395,6 +420,21 @@ async def insert_subproject(
     }
 
 
+async def get_subproject(db: Database, subproject_id: str) -> dict[str, Any] | None:
+    """Fetch a single subproject by ID."""
+    row = await db.fetchone("SELECT * FROM subprojects WHERE id = ?", (subproject_id,))
+    if row is None:
+        return None
+    d = dict(row)
+    for field in ("dependencies", "setup_steps"):
+        if d.get(field):
+            try:
+                d[field] = json.loads(d[field])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return d
+
+
 async def list_subprojects_for_project(db: Database, project_id: str) -> list[dict[str, Any]]:
     """List subprojects for a project, ordered by sort_order."""
     rows = await db.fetchall(
@@ -442,34 +482,131 @@ async def insert_provenance_link(
 # ── Proposal Decisions ────────────────────────────────────────────────────
 
 
-async def update_proposal_decision(
-    db: Database,
-    resource_id: str,
-    proposal_index: int,
-    decision: str,
-    edited_fields: dict[str, Any] | None = None,
-) -> bool:
-    """Update the decision on a specific proposal within discovered_projects JSON.
+def _normalize_proposal(proposal: dict[str, Any]) -> dict[str, Any]:
+    """Ensure a proposal dict has all required fields. Backfills missing ones."""
+    if "proposal_id" not in proposal or not proposal["proposal_id"]:
+        proposal["proposal_id"] = new_id()
+    proposal.setdefault("decision", None)
+    proposal.setdefault("decision_at", None)
+    proposal.setdefault("subproject_id", None)
+    proposal.setdefault("edited_name", None)
+    proposal.setdefault("edited_description", None)
+    proposal.setdefault("edited_type", None)
+    return proposal
 
-    Also merges any edited fields (name, description, type) into the proposal.
+
+async def _get_normalized_proposals(
+    db: Database, resource_id: str
+) -> tuple[list[dict[str, Any]], bool]:
+    """Get proposals for a resource, normalizing any that lack required fields.
+
+    Returns (proposals, was_modified). If was_modified, caller should persist.
     """
     result = await get_extraction_result(db, resource_id)
     if result is None:
-        return False
+        return [], False
 
     proposals = result.get("discovered_projects")
-    if not isinstance(proposals, list) or proposal_index >= len(proposals):
-        return False
+    if not isinstance(proposals, list):
+        return [], False
 
-    proposals[proposal_index]["decision"] = decision
-    if edited_fields:
-        for key, value in edited_fields.items():
-            if key in ("suggested_name", "description", "type"):
-                proposals[proposal_index][key] = value
+    modified = False
+    for p in proposals:
+        before = dict(p)
+        _normalize_proposal(p)
+        if p != before:
+            modified = True
+
+    if modified:
+        await db.execute(
+            "UPDATE extraction_results SET discovered_projects = ? WHERE resource_id = ?",
+            (json.dumps(proposals), resource_id),
+        )
+        await db.commit()
+
+    return proposals, True
+
+
+def _find_proposal(proposals: list[dict[str, Any]], proposal_id: str) -> dict[str, Any] | None:
+    """Find a proposal by its proposal_id."""
+    for p in proposals:
+        if p.get("proposal_id") == proposal_id:
+            return p
+    return None
+
+
+async def update_proposal_decision(
+    db: Database,
+    resource_id: str,
+    proposal_id: str,
+    decision: str,
+    subproject_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Update decision on a proposal identified by proposal_id.
+
+    Returns the updated proposal dict, or None if not found.
+    """
+    proposals, ok = await _get_normalized_proposals(db, resource_id)
+    if not ok:
+        return None
+
+    proposal = _find_proposal(proposals, proposal_id)
+    if proposal is None:
+        return None
+
+    proposal["decision"] = decision
+    proposal["decision_at"] = _now()
+    if subproject_id is not None:
+        proposal["subproject_id"] = subproject_id
 
     await db.execute(
         "UPDATE extraction_results SET discovered_projects = ? WHERE resource_id = ?",
         (json.dumps(proposals), resource_id),
     )
     await db.commit()
-    return True
+    return proposal
+
+
+async def update_proposal_edits(
+    db: Database,
+    resource_id: str,
+    proposal_id: str,
+    edited_name: str | None = None,
+    edited_description: str | None = None,
+    edited_type: str | None = None,
+) -> dict[str, Any] | None:
+    """Persist edited fields on a proposal. Returns updated proposal or None."""
+    proposals, ok = await _get_normalized_proposals(db, resource_id)
+    if not ok:
+        return None
+
+    proposal = _find_proposal(proposals, proposal_id)
+    if proposal is None:
+        return None
+
+    if proposal.get("decision") == "accepted":
+        return None  # Cannot edit after acceptance
+
+    if edited_name is not None:
+        proposal["edited_name"] = edited_name
+    if edited_description is not None:
+        proposal["edited_description"] = edited_description
+    if edited_type is not None:
+        proposal["edited_type"] = edited_type
+
+    await db.execute(
+        "UPDATE extraction_results SET discovered_projects = ? WHERE resource_id = ?",
+        (json.dumps(proposals), resource_id),
+    )
+    await db.commit()
+    return proposal
+
+
+async def get_proposal(
+    db: Database, resource_id: str, proposal_id: str
+) -> dict[str, Any] | None:
+    """Get a single proposal by proposal_id, with normalization."""
+    proposals, ok = await _get_normalized_proposals(db, resource_id)
+    if not ok:
+        return None
+    return _find_proposal(proposals, proposal_id)

@@ -9,6 +9,7 @@ from typing import Any
 
 from foundry.agents.providers.base import LLMProvider
 from foundry.ingestion.analysis import AnalysisResult
+from foundry.storage.queries import new_id
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ Analysis:"""
 
 @dataclass
 class SubprojectProposal:
+    proposal_id: str = field(default_factory=new_id)
     suggested_name: str = ""
     description: str = ""
     type: str = "research"
@@ -46,6 +48,13 @@ class SubprojectProposal:
     confidence: float = 0.5
     source_context: str = ""
     is_synthetic: bool = False
+    # Decision state (set later via API, not at discovery time)
+    decision: str | None = None
+    decision_at: str | None = None
+    subproject_id: str | None = None
+    edited_name: str | None = None
+    edited_description: str | None = None
+    edited_type: str | None = None
 
 
 async def run_discovery(

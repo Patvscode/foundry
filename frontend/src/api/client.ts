@@ -105,6 +105,7 @@ export interface ExtractionResult {
 }
 
 export interface SubprojectProposal {
+  proposal_id: string
   suggested_name: string
   description: string
   type: string
@@ -115,6 +116,12 @@ export interface SubprojectProposal {
   confidence: number
   source_context: string
   is_synthetic: boolean
+  decision: string | null
+  decision_at: string | null
+  subproject_id: string | null
+  edited_name: string | null
+  edited_description: string | null
+  edited_type: string | null
 }
 
 export function getResources(projectId: string): Promise<Resource[]> {
@@ -150,20 +157,26 @@ export interface Subproject {
   updated_at: string
 }
 
-export function acceptProposal(
-  resourceId: string,
-  proposalIndex: number,
-  edits?: { suggested_name?: string; description?: string; type?: string },
-): Promise<Subproject> {
-  return request<Subproject>(`/api/resources/${resourceId}/proposals/${proposalIndex}/accept`, {
+export function acceptProposal(resourceId: string, proposalId: string): Promise<Subproject> {
+  return request<Subproject>(`/api/resources/${resourceId}/proposals/${proposalId}/accept`, {
     method: 'POST',
-    body: JSON.stringify(edits ?? {}),
   })
 }
 
-export function rejectProposal(resourceId: string, proposalIndex: number): Promise<{ status: string }> {
-  return request<{ status: string }>(`/api/resources/${resourceId}/proposals/${proposalIndex}/reject`, {
+export function rejectProposal(resourceId: string, proposalId: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/resources/${resourceId}/proposals/${proposalId}/reject`, {
     method: 'POST',
+  })
+}
+
+export function editProposal(
+  resourceId: string,
+  proposalId: string,
+  edits: { edited_name?: string; edited_description?: string; edited_type?: string },
+): Promise<SubprojectProposal> {
+  return request<SubprojectProposal>(`/api/resources/${resourceId}/proposals/${proposalId}`, {
+    method: 'PUT',
+    body: JSON.stringify(edits),
   })
 }
 

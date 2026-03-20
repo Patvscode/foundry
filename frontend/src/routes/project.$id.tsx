@@ -5,6 +5,7 @@ import { useState } from 'react'
 import {
   acceptProposal,
   addResource,
+  editProposal,
   getProject,
   getResource,
   getResources,
@@ -70,8 +71,8 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
   })
 
   const acceptMut = useMutation({
-    mutationFn: ({ resourceId, idx, edits }: { resourceId: string; idx: number; edits: Record<string, string> }) =>
-      acceptProposal(resourceId, idx, edits),
+    mutationFn: ({ resourceId, proposalId }: { resourceId: string; proposalId: string }) =>
+      acceptProposal(resourceId, proposalId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['resource', selectedResourceId] })
       await queryClient.invalidateQueries({ queryKey: ['subprojects', id] })
@@ -81,8 +82,16 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
   })
 
   const rejectMut = useMutation({
-    mutationFn: ({ resourceId, idx }: { resourceId: string; idx: number }) =>
-      rejectProposal(resourceId, idx),
+    mutationFn: ({ resourceId, proposalId }: { resourceId: string; proposalId: string }) =>
+      rejectProposal(resourceId, proposalId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['resource', selectedResourceId] })
+    },
+  })
+
+  const editMut = useMutation({
+    mutationFn: ({ resourceId, proposalId, edits }: { resourceId: string; proposalId: string; edits: Record<string, string> }) =>
+      editProposal(resourceId, proposalId, edits),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['resource', selectedResourceId] })
     },
@@ -246,17 +255,19 @@ export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
           <h2 className="text-xs uppercase tracking-wide text-zinc-500">Discovered Projects</h2>
           {proposals && proposals.length > 0 ? (
             <div className="mt-3 space-y-3">
-              {proposals.map((p, i) => (
+              {proposals.map((p) => (
                 <ProposalCard
-                  key={i}
+                  key={p.proposal_id}
                   proposal={p}
-                  index={i}
-                  disabled={acceptMut.isPending || rejectMut.isPending}
-                  onAccept={(idx, edits) =>
-                    acceptMut.mutate({ resourceId: sel!.id, idx, edits })
+                  disabled={acceptMut.isPending || rejectMut.isPending || editMut.isPending}
+                  onAccept={(proposalId) =>
+                    acceptMut.mutate({ resourceId: sel!.id, proposalId })
                   }
-                  onReject={(idx) =>
-                    rejectMut.mutate({ resourceId: sel!.id, idx })
+                  onReject={(proposalId) =>
+                    rejectMut.mutate({ resourceId: sel!.id, proposalId })
+                  }
+                  onEdit={(proposalId, edits) =>
+                    editMut.mutate({ resourceId: sel!.id, proposalId, edits })
                   }
                 />
               ))}
