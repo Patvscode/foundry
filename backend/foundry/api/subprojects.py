@@ -164,6 +164,27 @@ async def edit_proposal(
     return updated
 
 
+@router.get("/subprojects/{subproject_id}")
+async def get_subproject_detail(subproject_id: str, request: Request) -> dict[str, Any]:
+    db: Database = request.app.state.db
+
+    from foundry.storage.queries import get_subproject, get_provenance_for_target
+
+    subproject = await get_subproject(db, subproject_id)
+    if subproject is None:
+        raise HTTPException(status_code=404, detail="Subproject not found")
+
+    provenance = await get_provenance_for_target(db, "subproject", subproject_id)
+    subproject["provenance"] = provenance
+
+    # Check workspace exists
+    from pathlib import Path
+    workspace = Path(subproject.get("workspace_path", ""))
+    subproject["workspace_exists"] = workspace.exists() and workspace.is_dir()
+
+    return subproject
+
+
 @router.get("/projects/{project_id}/subprojects")
 async def list_subprojects(project_id: str, request: Request) -> list[dict[str, Any]]:
     db: Database = request.app.state.db

@@ -479,6 +479,23 @@ async def insert_provenance_link(
     return link_id
 
 
+async def get_provenance_for_target(
+    db: Database, target_type: str, target_id: str
+) -> list[dict[str, Any]]:
+    """Get provenance links for a target, enriched with resource info."""
+    rows = await db.fetchall(
+        """
+        SELECT pl.*, r.url AS resource_url, r.title AS resource_title
+        FROM provenance_links pl
+        LEFT JOIN resources r ON r.id = pl.resource_id
+        WHERE pl.target_type = ? AND pl.target_id = ?
+        ORDER BY pl.created_at ASC
+        """,
+        (target_type, target_id),
+    )
+    return [dict(row) for row in rows]
+
+
 # ── Proposal Decisions ────────────────────────────────────────────────────
 
 

@@ -13,6 +13,7 @@ import { DashboardRoute } from '@/routes'
 import { OnboardingRoute } from '@/routes/onboarding'
 import { ProjectWorkspaceRoute } from '@/routes/project.$id'
 import { SettingsRoute } from '@/routes/settings'
+import { SubprojectRoute } from '@/routes/subproject.$id'
 
 const queryClient = new QueryClient()
 
@@ -57,7 +58,18 @@ const projectRoute = createRoute({
   component: ProjectRouteWrapper,
 })
 
-const routeTree = rootRoute.addChildren([dashboardRoute, projectRoute, onboardingRoute, settingsRoute])
+function SubprojectRouteWrapper() {
+  const { id } = useParams({ from: '/subproject/$id' })
+  return <SubprojectRoute id={id} />
+}
+
+const subprojectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/subproject/$id',
+  component: SubprojectRouteWrapper,
+})
+
+const routeTree = rootRoute.addChildren([dashboardRoute, projectRoute, subprojectRoute, onboardingRoute, settingsRoute])
 
 const router = createRouter({ routeTree })
 

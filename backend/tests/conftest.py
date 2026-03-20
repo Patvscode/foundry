@@ -10,4 +10,5 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     data_dir = tmp_path / "foundry-data"
     monkeypatch.setenv("FOUNDRY_STORAGE__DATA_DIR", str(data_dir))
     monkeypatch.setenv("FOUNDRY_AGENT__DEFAULT_PROVIDER", "none")
+    monkeypatch.setenv("FOUNDRY_JOBS__DISABLED", "true")
     return data_dir

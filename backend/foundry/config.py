@@ -100,6 +100,11 @@ class ExecutionSettings(BaseModel):
     show_output: bool = True
 
 
+class JobsSettings(BaseModel):
+    disabled: bool = False
+    poll_interval: float = 2.0
+
+
 class WorkspaceSettings(BaseModel):
     auto_commit: bool = True
     reconcile_mode: str = "detect"
@@ -138,6 +143,7 @@ class FoundrySettings(BaseSettings):
     agent: AgentSettings = Field(default_factory=AgentSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
     execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
+    jobs: JobsSettings = Field(default_factory=JobsSettings)
     workspace: WorkspaceSettings = Field(default_factory=WorkspaceSettings)
     search: SearchSettings = Field(default_factory=SearchSettings)
     ui: UISettings = Field(default_factory=UISettings)

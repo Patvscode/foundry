@@ -7,12 +7,13 @@ import logging
 import os
 
 from foundry.config import FoundrySettings
+
 from foundry.storage.database import Database
 from foundry.storage.queries import get_queued_jobs, mark_stale_jobs, update_job
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL = 2.0  # seconds
+DEFAULT_POLL_INTERVAL = 2.0  # seconds
 
 
 class JobRunner:
@@ -27,6 +28,11 @@ class JobRunner:
     async def start(self) -> None:
         """Start the runner. Mark any leftover running jobs as stale."""
         await mark_stale_jobs(self.db)
+
+        if self.settings.jobs.disabled:
+            logger.info("Job runner disabled via config (jobs.disabled=true)")
+            return
+
         self._running = True
         self._task = asyncio.create_task(self._poll_loop())
         logger.info("Job runner started")
@@ -51,12 +57,12 @@ class JobRunner:
                 if jobs:
                     await self._process_job(jobs[0])
                 else:
-                    await asyncio.sleep(POLL_INTERVAL)
+                    await asyncio.sleep(self.settings.jobs.poll_interval)
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.exception("Error in job runner poll loop")
-                await asyncio.sleep(POLL_INTERVAL)
+                await asyncio.sleep(self.settings.jobs.poll_interval)
 
     async def _process_job(self, job: dict) -> None:
         """Process a single job."""

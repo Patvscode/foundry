@@ -183,3 +183,51 @@ export function editProposal(
 export function getSubprojects(projectId: string): Promise<Subproject[]> {
   return request<Subproject[]>(`/api/projects/${projectId}/subprojects`)
 }
+
+// ── Subproject Detail ──────────────────────────────────────────
+
+export interface ProvenanceLink {
+  id: string
+  resource_id: string
+  resource_url: string | null
+  resource_title: string | null
+  target_type: string
+  target_id: string
+  context: string | null
+  confidence: number
+}
+
+export interface SubprojectDetail extends Subproject {
+  provenance: ProvenanceLink[]
+  workspace_exists: boolean
+}
+
+export interface FileEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  size?: number
+}
+
+export interface FileTreeResponse {
+  workspace_exists: boolean
+  entries: FileEntry[]
+}
+
+export interface FileContentResponse {
+  path: string
+  size: number
+  content: string
+}
+
+export function getSubprojectDetail(id: string): Promise<SubprojectDetail> {
+  return request<SubprojectDetail>(`/api/subprojects/${id}`)
+}
+
+export function getSubprojectFiles(id: string): Promise<FileTreeResponse> {
+  return request<FileTreeResponse>(`/api/subprojects/${id}/files`)
+}
+
+export function getFileContent(subprojectId: string, path: string): Promise<FileContentResponse> {
+  return request<FileContentResponse>(`/api/subprojects/${subprojectId}/files/${path}`)
+}
