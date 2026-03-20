@@ -302,6 +302,63 @@ export function deleteNote(subprojectId: string, noteId: string): Promise<{ stat
   })
 }
 
+// ── Agent Chat ─────────────────────────────────────────────────
+
+export interface ChatMessage {
+  id: string
+  session_id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  created_at: string
+}
+
+export interface ChatResponse {
+  session_id: string
+  message: string
+  is_synthetic: boolean
+  provider: string
+  suggestions: Array<{ type: 'task' | 'note'; title: string }>
+}
+
+export interface AgentSession {
+  id: string
+  project_id: string | null
+  subproject_id: string | null
+  provider: string
+  status: string
+  messages: ChatMessage[]
+}
+
+export function sendAgentMessage(params: {
+  message: string
+  session_id?: string
+  project_id?: string
+  resource_id?: string
+  subproject_id?: string
+}): Promise<ChatResponse> {
+  return request<ChatResponse>('/api/agent/chat', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export function getAgentSession(sessionId: string): Promise<AgentSession> {
+  return request<AgentSession>(`/api/agent/sessions/${sessionId}`)
+}
+
+export function executeAgentAction(params: {
+  subproject_id: string
+  action_type: 'task' | 'note'
+  title: string
+  description?: string
+  content?: string
+}): Promise<Task | Note> {
+  return request<Task | Note>('/api/agent/action', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
 // ── Subproject Detail ──────────────────────────────────────────
 
 export function getSubprojectDetail(id: string): Promise<SubprojectDetail> {

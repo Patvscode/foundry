@@ -739,3 +739,55 @@ async def get_proposal(
     if not ok:
         return None
     return _find_proposal(proposals, proposal_id)
+
+
+# ── Agent Sessions & Messages ─────────────────────────────────────────────
+
+
+async def insert_agent_session(
+    db: Database,
+    session_id: str,
+    project_id: str | None = None,
+    subproject_id: str | None = None,
+    provider: str = "",
+) -> dict[str, Any]:
+    now = _now()
+    await db.execute(
+        """
+        INSERT INTO agent_sessions (id, project_id, subproject_id, provider, mode, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'explore', 'active', ?, ?)
+        """,
+        (session_id, project_id, subproject_id, provider, now, now),
+    )
+    await db.commit()
+    return {"id": session_id, "project_id": project_id, "subproject_id": subproject_id,
+            "provider": provider, "status": "active", "created_at": now}
+
+
+async def get_agent_session(db: Database, session_id: str) -> dict[str, Any] | None:
+    row = await db.fetchone("SELECT * FROM agent_sessions WHERE id = ?", (session_id,))
+    return dict(row) if row else None
+
+
+async def insert_agent_message(
+    db: Database,
+    message_id: str,
+    session_id: str,
+    role: str,
+    content: str,
+) -> dict[str, Any]:
+    now = _now()
+    await db.execute(
+        "INSERT INTO agent_messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+        (message_id, session_id, role, content, now),
+    )
+    await db.commit()
+    return {"id": message_id, "session_id": session_id, "role": role, "content": content, "created_at": now}
+
+
+async def list_agent_messages(db: Database, session_id: str) -> list[dict[str, Any]]:
+    rows = await db.fetchall(
+        "SELECT * FROM agent_messages WHERE session_id = ? ORDER BY created_at ASC",
+        (session_id,),
+    )
+    return [dict(row) for row in rows]

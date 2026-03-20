@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Folder } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+
+import { useAppStore } from '@/stores/app'
 
 import {
   acceptProposal,
@@ -26,9 +28,15 @@ const ACTIVE_COARSE = new Set(['pending', 'processing'])
 
 export function ProjectWorkspaceRoute({ id }: ProjectWorkspaceRouteProps) {
   const queryClient = useQueryClient()
+  const setAgentContext = useAppStore((s) => s.setAgentContext)
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null)
   const [newUrl, setNewUrl] = useState('')
   const [urlError, setUrlError] = useState('')
+
+  // Set agent context when project or selected resource changes
+  useEffect(() => {
+    setAgentContext({ projectId: id, resourceId: selectedResourceId ?? undefined })
+  }, [id, selectedResourceId, setAgentContext])
 
   const { data: project, isPending, error } = useQuery({
     queryKey: ['project', id],

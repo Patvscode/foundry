@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft, ExternalLink, FolderX, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+
+import { useAppStore } from '@/stores/app'
 
 import {
   generateStarterTasks,
@@ -23,8 +25,14 @@ type Tab = 'files' | 'tasks' | 'notes' | 'next-steps'
 
 export function SubprojectRoute({ id }: SubprojectRouteProps) {
   const queryClient = useQueryClient()
+  const setAgentContext = useAppStore((s) => s.setAgentContext)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('files')
+
+  useEffect(() => {
+    setAgentContext({ subprojectId: id })
+    return () => setAgentContext({})
+  }, [id, setAgentContext])
 
   const { data: sub, isPending, error } = useQuery({
     queryKey: ['subproject', id],
