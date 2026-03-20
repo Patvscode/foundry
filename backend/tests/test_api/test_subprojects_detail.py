@@ -96,13 +96,24 @@ def test_subproject_file_content(temp_data_dir: Path) -> None:
 
 
 def test_file_content_path_traversal_blocked(temp_data_dir: Path) -> None:
+    """Path traversal via symlink should be blocked."""
     with TestClient(app) as client:
         _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
 
-        # Use a traversal that stays within the URL path structure
-        resp = client.get(f"/api/subprojects/{sub_id}/files/.foundry/../../../../../../etc/passwd")
+        # Create a symlink inside workspace that points outside
+        sub = client.get(f"/api/subprojects/{sub_id}").json()
+        workspace = Path(sub["workspace_path"])
+        symlink = workspace / "escape"
+        try:
+            symlink.symlink_to("/etc/hostname")
+        except OSError:
+            # Can't create symlink (permissions) — skip
+            return
 
-    assert resp.status_code in (403, 404)  # 403 if path check catches it, 404 if file doesn't exist after resolve
+        resp = client.get(f"/api/subprojects/{sub_id}/files/escape")
+
+    # Should be blocked: symlink resolves outside workspace
+    assert resp.status_code == 403
 
 
 def test_nonexistent_subproject(temp_data_dir: Path) -> None:
@@ -126,3 +137,93 @@ def test_provenance_has_resource_info(temp_data_dir: Path) -> None:
 
     prov = resp.json()["provenance"][0]
     assert prov["resource_url"] == "https://example.com/page"
+
+
+# ── Task tests ────────────────────────────────────────────────────────────
+
+
+def test_create_and_list_tasks(temp_data_dir: Path) -> None:
+    with TestClient(app) as client:
+        _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
+
+        resp = client.post(f"/api/subprojects/{sub_id}/tasks", json={"title": "Do something"})
+        assert resp.status_code == 201
+        assert resp.json()["title"] == "Do something"
+        assert resp.json()["status"] == "todo"
+        assert resp.json()["source"] == "user"
+
+        resp = client.get(f"/api/subprojects/{sub_id}/tasks")
+        assert len(resp.json()) == 1
+
+
+def test_toggle_task_status(temp_data_dir: Path) -> None:
+    with TestClient(app) as client:
+        _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
+        task = client.post(f"/api/subprojects/{sub_id}/tasks", json={"title": "Test"}).json()
+
+        resp = client.patch(f"/api/subprojects/{sub_id}/tasks/{task['id']}", json={"status": "done"})
+        assert resp.json()["status"] == "done"
+
+        resp = client.patch(f"/api/subprojects/{sub_id}/tasks/{task['id']}", json={"status": "todo"})
+        assert resp.json()["status"] == "todo"
+
+
+def test_generate_starter_tasks(temp_data_dir: Path) -> None:
+    with TestClient(app) as client:
+        _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
+
+        resp = client.post(f"/api/subprojects/{sub_id}/tasks/generate")
+        assert resp.status_code == 201
+        tasks = resp.json()
+        assert len(tasks) >= 2  # deps task + setup steps + source review
+        assert any("pytorch" in t["title"].lower() for t in tasks)  # deps
+        assert all(t["source"] == "extracted" for t in tasks)
+
+
+def test_generate_starter_tasks_idempotent(temp_data_dir: Path) -> None:
+    with TestClient(app) as client:
+        _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
+
+        resp1 = client.post(f"/api/subprojects/{sub_id}/tasks/generate")
+        count1 = len(resp1.json())
+
+        resp2 = client.post(f"/api/subprojects/{sub_id}/tasks/generate")
+        count2 = len(resp2.json())
+
+        assert count1 == count2  # No duplicates
+
+
+# ── Note tests ────────────────────────────────────────────────────────────
+
+
+def test_create_and_list_notes(temp_data_dir: Path) -> None:
+    with TestClient(app) as client:
+        _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
+
+        resp = client.post(f"/api/subprojects/{sub_id}/notes", json={"title": "My note", "content": "Some content"})
+        assert resp.status_code == 201
+        assert resp.json()["title"] == "My note"
+
+        resp = client.get(f"/api/subprojects/{sub_id}/notes")
+        assert len(resp.json()) == 1
+
+
+def test_update_note(temp_data_dir: Path) -> None:
+    with TestClient(app) as client:
+        _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
+        note = client.post(f"/api/subprojects/{sub_id}/notes", json={"title": "Draft"}).json()
+
+        resp = client.patch(f"/api/subprojects/{sub_id}/notes/{note['id']}", json={"content": "Updated content"})
+        assert resp.json()["content"] == "Updated content"
+
+
+def test_delete_note(temp_data_dir: Path) -> None:
+    with TestClient(app) as client:
+        _pid, _rid, sub_id = _create_subproject(client, temp_data_dir)
+        note = client.post(f"/api/subprojects/{sub_id}/notes", json={"title": "Temp"}).json()
+
+        resp = client.delete(f"/api/subprojects/{sub_id}/notes/{note['id']}")
+        assert resp.json()["status"] == "deleted"
+
+        resp = client.get(f"/api/subprojects/{sub_id}/notes")
+        assert len(resp.json()) == 0

@@ -454,6 +454,118 @@ async def list_subprojects_for_project(db: Database, project_id: str) -> list[di
     return results
 
 
+# ── Tasks ─────────────────────────────────────────────────────────────────
+
+
+async def insert_task(
+    db: Database,
+    task_id: str,
+    subproject_id: str,
+    title: str,
+    description: str = "",
+    source: str = "user",
+    sort_order: int = 0,
+) -> dict[str, Any]:
+    now = _now()
+    await db.execute(
+        """
+        INSERT INTO tasks (id, subproject_id, title, description, status, source, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'todo', ?, ?, ?, ?)
+        """,
+        (task_id, subproject_id, title, description, source, sort_order, now, now),
+    )
+    await db.commit()
+    return {
+        "id": task_id, "subproject_id": subproject_id, "title": title,
+        "description": description, "status": "todo", "source": source,
+        "sort_order": sort_order, "created_at": now, "updated_at": now,
+    }
+
+
+async def list_tasks_for_subproject(db: Database, subproject_id: str) -> list[dict[str, Any]]:
+    rows = await db.fetchall(
+        "SELECT * FROM tasks WHERE subproject_id = ? ORDER BY sort_order ASC, created_at ASC",
+        (subproject_id,),
+    )
+    return [dict(row) for row in rows]
+
+
+async def update_task(
+    db: Database, task_id: str, **fields: Any
+) -> dict[str, Any] | None:
+    if not fields:
+        return None
+    fields["updated_at"] = _now()
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [task_id]
+    await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", tuple(values))
+    await db.commit()
+    row = await db.fetchone("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    return dict(row) if row else None
+
+
+async def count_extracted_tasks(db: Database, subproject_id: str) -> int:
+    row = await db.fetchone(
+        "SELECT COUNT(*) AS cnt FROM tasks WHERE subproject_id = ? AND source = 'extracted'",
+        (subproject_id,),
+    )
+    return int(row["cnt"]) if row else 0
+
+
+# ── Notes ─────────────────────────────────────────────────────────────────
+
+
+async def insert_note(
+    db: Database,
+    note_id: str,
+    subproject_id: str,
+    title: str,
+    content: str = "",
+    source: str = "user",
+) -> dict[str, Any]:
+    now = _now()
+    await db.execute(
+        """
+        INSERT INTO notes (id, subproject_id, title, content, source, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (note_id, subproject_id, title, content, source, now, now),
+    )
+    await db.commit()
+    return {
+        "id": note_id, "subproject_id": subproject_id, "title": title,
+        "content": content, "source": source, "created_at": now, "updated_at": now,
+    }
+
+
+async def list_notes_for_subproject(db: Database, subproject_id: str) -> list[dict[str, Any]]:
+    rows = await db.fetchall(
+        "SELECT * FROM notes WHERE subproject_id = ? ORDER BY created_at DESC",
+        (subproject_id,),
+    )
+    return [dict(row) for row in rows]
+
+
+async def update_note(
+    db: Database, note_id: str, **fields: Any
+) -> dict[str, Any] | None:
+    if not fields:
+        return None
+    fields["updated_at"] = _now()
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [note_id]
+    await db.execute(f"UPDATE notes SET {set_clause} WHERE id = ?", tuple(values))
+    await db.commit()
+    row = await db.fetchone("SELECT * FROM notes WHERE id = ?", (note_id,))
+    return dict(row) if row else None
+
+
+async def delete_note(db: Database, note_id: str) -> bool:
+    cursor = await db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    await db.commit()
+    return cursor.rowcount > 0
+
+
 # ── Provenance ────────────────────────────────────────────────────────────
 
 

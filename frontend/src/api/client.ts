@@ -220,6 +220,90 @@ export interface FileContentResponse {
   content: string
 }
 
+// ── Tasks ──────────────────────────────────────────────────────
+
+export interface Task {
+  id: string
+  subproject_id: string
+  title: string
+  description: string
+  status: 'todo' | 'done'
+  source: 'user' | 'extracted'
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export function getTasks(subprojectId: string): Promise<Task[]> {
+  return request<Task[]>(`/api/subprojects/${subprojectId}/tasks`)
+}
+
+export function createTask(subprojectId: string, title: string, description = ''): Promise<Task> {
+  return request<Task>(`/api/subprojects/${subprojectId}/tasks`, {
+    method: 'POST',
+    body: JSON.stringify({ title, description }),
+  })
+}
+
+export function updateTask(
+  subprojectId: string,
+  taskId: string,
+  fields: { title?: string; description?: string; status?: string },
+): Promise<Task> {
+  return request<Task>(`/api/subprojects/${subprojectId}/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(fields),
+  })
+}
+
+export function generateStarterTasks(subprojectId: string): Promise<Task[]> {
+  return request<Task[]>(`/api/subprojects/${subprojectId}/tasks/generate`, {
+    method: 'POST',
+  })
+}
+
+// ── Notes ──────────────────────────────────────────────────────
+
+export interface Note {
+  id: string
+  subproject_id: string
+  title: string
+  content: string
+  source: string
+  created_at: string
+  updated_at: string
+}
+
+export function getNotes(subprojectId: string): Promise<Note[]> {
+  return request<Note[]>(`/api/subprojects/${subprojectId}/notes`)
+}
+
+export function createNote(subprojectId: string, title: string, content = ''): Promise<Note> {
+  return request<Note>(`/api/subprojects/${subprojectId}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ title, content }),
+  })
+}
+
+export function updateNote(
+  subprojectId: string,
+  noteId: string,
+  fields: { title?: string; content?: string },
+): Promise<Note> {
+  return request<Note>(`/api/subprojects/${subprojectId}/notes/${noteId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(fields),
+  })
+}
+
+export function deleteNote(subprojectId: string, noteId: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/subprojects/${subprojectId}/notes/${noteId}`, {
+    method: 'DELETE',
+  })
+}
+
+// ── Subproject Detail ──────────────────────────────────────────
+
 export function getSubprojectDetail(id: string): Promise<SubprojectDetail> {
   return request<SubprojectDetail>(`/api/subprojects/${id}`)
 }

@@ -81,7 +81,7 @@ async def get_file_content(subproject_id: str, file_path: str, request: Request)
     workspace = Path(subproject.get("workspace_path", ""))
     target = (workspace / file_path).resolve()
 
-    # Path traversal check
+    # Path traversal check — must come before existence check for deterministic 403
     if not target.is_relative_to(workspace.resolve()):
         raise HTTPException(status_code=403, detail="Path outside workspace")
 
